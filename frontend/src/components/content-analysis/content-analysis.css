@@ -1,0 +1,202 @@
+.content-analysis {
+  margin-top: 20px;
+  background:
+    radial-gradient(circle at 90% 8%, rgba(155, 109, 255, .11), transparent 30%),
+    var(--workbench-surface);
+}
+
+.content-analysis-intro {
+  max-width: 78ch;
+  margin: -4px 0 18px;
+  color: var(--workbench-text-secondary);
+  line-height: 1.7;
+}
+
+.content-analysis-alert { margin: 14px 0; }
+
+.content-analysis-progress {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(155, 109, 255, .25);
+  border-radius: 11px;
+  background: rgba(155, 109, 255, .06);
+}
+
+.content-analysis-progress > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--workbench-text-secondary);
+}
+
+.content-analysis-progress strong {
+  margin-left: auto;
+  color: var(--workbench-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.content-analysis-progress small { color: var(--workbench-text-muted); }
+.content-analysis-result { margin-top: 8px; }
+
+.content-analysis-result__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.content-analysis-result__meta span {
+  padding: 4px 9px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 999px;
+  color: var(--workbench-text-muted);
+  font-size: 12px;
+}
+
+.content-analysis-summary,
+.content-analysis-issues {
+  display: grid;
+  gap: 12px;
+}
+
+.content-analysis-summary article,
+.content-analysis-card {
+  padding: 16px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.content-analysis-summary h4,
+.content-analysis-card h4,
+.content-analysis-column-title {
+  margin: 0;
+  color: var(--workbench-text);
+}
+
+.content-analysis-summary p,
+.content-analysis-card p {
+  margin: 10px 0 0;
+  color: var(--workbench-text-secondary);
+  line-height: 1.75;
+}
+
+.content-analysis-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.content-analysis-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-analysis-card__heading .ant-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.content-analysis-scroll-text {
+  max-height: 280px;
+  margin-top: 10px;
+  overflow: auto;
+  color: var(--workbench-text-secondary);
+  line-height: 1.8;
+  white-space: pre-wrap;
+  scrollbar-gutter: stable;
+}
+
+.content-analysis-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.content-analysis-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.content-analysis-two-column > div {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.content-analysis-column-title { margin-bottom: 2px; }
+
+.content-analysis-card blockquote {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+  border-left: 3px solid var(--workbench-primary);
+  border-radius: 0 7px 7px 0;
+  background: rgba(155, 109, 255, .07);
+  color: #dfe5f7;
+  line-height: 1.7;
+}
+
+.content-analysis-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  color: #a9bcf7;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.content-analysis-empty {
+  display: grid;
+  min-height: 130px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--workbench-text-muted);
+  text-align: center;
+}
+
+.content-analysis-empty .anticon {
+  color: var(--workbench-primary);
+  font-size: 25px;
+}
+
+.content-analysis-empty strong { color: var(--workbench-text-secondary); }
+.content-analysis-empty.is-success { color: #72e4d4; }
+
+.content-analysis-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 0;
+  border: 0;
+}
+
+.content-analysis-options legend {
+  margin-bottom: 12px;
+  color: var(--workbench-text);
+  font-weight: 600;
+}
+
+.content-analysis-options .ant-checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 820px) {
+  .content-analysis-two-column { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .content-analysis-options .ant-checkbox-group { grid-template-columns: 1fr; }
+  .content-analysis-card__heading { align-items: stretch; flex-direction: column; }
+  .content-analysis-card__actions { justify-content: flex-end; }
+}

@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 0 0% 4%;
+  --surface: 0 0% 8%;
+  --text: 0 0% 96%;
+  --muted: 0 0% 60%;
+  --stroke: 0 0% 16%;
+  color-scheme: dark;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: hsl(var(--bg)); }
+body { margin: 0; min-width: 320px; overflow-x: hidden; background: hsl(var(--bg)); color: hsl(var(--text)); font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+button, a { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button { cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 2px solid #89aacc; outline-offset: 3px; }
+em { font-family: 'Instrument Serif', serif; }
+
+@layer components {
+  .section-shell { @apply mx-auto max-w-[1200px] px-5 sm:px-7 md:px-10 lg:px-16; }
+  .accent-gradient { background: linear-gradient(90deg, #89aacc 0%, #4e85bf 100%); box-shadow: 0 0 8px rgba(137,170,204,.35); }
+  .logo-ring { background: linear-gradient(90deg, #89aacc, #4e85bf); transition: transform .25s ease; }
+  .logo-ring:hover { transform: rotate(12deg) scale(1.04); background: linear-gradient(270deg, #89aacc, #4e85bf); }
+  .primary-button, .outline-button { @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-7 text-sm transition-all duration-300 active:scale-95; }
+  .primary-button { @apply bg-text-primary text-bg; border: 1px solid transparent; }
+  .primary-button:hover { @apply bg-bg text-text-primary; border-color: #729bc4; box-shadow: 0 0 0 1px #89aacc, 0 12px 30px rgba(0,0,0,.25); transform: translateY(-2px); }
+  .outline-button { @apply border border-stroke bg-bg/70 text-text-primary backdrop-blur-md; }
+  .outline-button:hover { border-color: #729bc4; box-shadow: 0 0 0 1px #4e85bf; transform: translateY(-2px); }
+  .gradient-button { @apply rounded-full p-[1.5px] text-sm; background: transparent; }
+  .gradient-button > span { @apply flex min-h-11 items-center justify-center gap-2 rounded-full bg-surface px-5 text-text-primary transition-colors; }
+  .gradient-button:hover { background: linear-gradient(90deg, #89aacc, #4e85bf); }
+  .gradient-button.compact > span { @apply min-h-9 px-3 text-xs sm:px-4 sm:text-sm; }
+  .project-card { @apply relative cursor-pointer overflow-hidden rounded-[1.75rem] border border-stroke bg-surface; }
+  .project-card > img { @apply h-full w-full object-cover transition-transform duration-700 ease-out; }
+  .project-card:hover > img { transform: scale(1.055); }
+  .halftone { @apply pointer-events-none absolute inset-0 opacity-[.18] mix-blend-multiply; background-image: radial-gradient(circle, #000 1px, transparent 1px); background-size: 4px 4px; }
+  .project-overlay { @apply absolute inset-0 grid place-items-center bg-bg/70 opacity-0 backdrop-blur-md transition-opacity duration-500 group-hover:opacity-100; }
+  .project-pill { @apply flex items-center gap-2 rounded-full border border-white/25 bg-white px-5 py-3 text-sm text-black; }
+  .journal-row { @apply flex min-h-[82px] w-full items-center gap-4 rounded-[2rem] border border-stroke bg-surface/30 p-3 text-text-primary transition-all duration-300 hover:border-white/20 hover:bg-surface sm:rounded-full sm:gap-6; }
+  .journal-row > img { @apply h-14 w-14 shrink-0 rounded-full object-cover grayscale transition-all duration-500 group-hover:grayscale-0 sm:h-16 sm:w-16; }
+}
+
+@keyframes scroll-down { 0% { transform: translateY(-100%); } 100% { transform: translateY(200%); } }
+@keyframes role-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse-soft { 0%,100% { opacity: .45; box-shadow: 0 0 0 0 rgba(52,211,153,.3); } 50% { opacity: 1; box-shadow: 0 0 0 6px rgba(52,211,153,0); } }
+
+@media (max-width: 767px) {
+  .project-card { aspect-ratio: 1 / 1 !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

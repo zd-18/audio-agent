@@ -1,0 +1,25 @@
+.processing-list-filter {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.processing-list-filter > div { display: grid; gap: 8px; min-width: 220px; }
+.processing-list-filter label { color: #c7d2e9; font-weight: 600; }
+.processing-list-panel { min-width: 0; }
+.processing-list-progress { display: grid; grid-template-columns: minmax(80px, 1fr) 42px; align-items: center; gap: 10px; }
+.processing-list-progress span { color: #cbd5eb; font-variant-numeric: tabular-nums; }
+.processing-list-status { border-radius: 999px; }
+.processing-list-status.is-success { color: #6de6d3; border-color: rgba(66, 220, 199, .38); background: rgba(66, 220, 199, .1); }
+.processing-list-status.is-failed { color: #ff8ca0; border-color: rgba(255, 107, 129, .38); background: rgba(255, 107, 129, .1); }
+.processing-list-status.is-processing { color: #9db8ff; border-color: rgba(91, 140, 255, .38); background: rgba(91, 140, 255, .1); }
+.processing-list-status.is-pending,
+.processing-list-status.is-queued,
+.processing-list-status.is-cancelled { color: #d4bddf; border-color: rgba(212, 189, 223, .3); background: rgba(212, 189, 223, .08); }
+
+@media (max-width: 640px) {
+  .processing-list-filter { align-items: stretch; flex-direction: column; }
+  .processing-list-filter > div { min-width: 0; }
+}

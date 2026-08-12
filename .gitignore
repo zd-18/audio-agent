@@ -1,0 +1,48 @@
+﻿# Java
+backend/target/
+*.class
+*.jar
+*.log
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Environment
+.env
+application-local.yml
+asr-service/.env
+
+# Upload and temporary files
+uploads/
+temp/
+*.tmp
+
+# System files
+.DS_Store
+Thumbs.db
+
+
+# Runtime logs
+logs/
+
+# ASR model cache
+asr-service/.model-cache/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local ASR environment
+asr-service/.env
+
+# Local test audio
+test-audio/

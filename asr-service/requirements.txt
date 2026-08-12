@@ -1,0 +1,8 @@
+fastapi==0.139.2
+uvicorn==0.51.0
+python-multipart==0.0.32
+funasr==1.3.22
+modelscope==1.38.1
+torch==2.11.0
+torchaudio==2.11.0
+soundfile==0.13.1

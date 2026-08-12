@@ -1,0 +1,235 @@
+spring:
+  datasource:
+    url: "jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:audio_agent}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      connection-timeout: 20000
+
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:audioagent}
+    password: ${RABBITMQ_PASS:}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+
+mybatis-plus:
+  type-enums-package: com.audioagent
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+logging:
+  level:
+    com.audioagent: debug
+    com.audioagent.auth.mapper: warn
+    com.audioagent.transcription.mapper: warn
+    com.audioagent.transcript.mapper: warn
+    com.audioagent.contentanalysis.mapper: warn
+    com.audioagent.agent.mapper: warn
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:audioadmin}
+  secret-key: ${MINIO_SECRET_KEY:}
+  bucket-name: ${MINIO_BUCKET_NAME:audio-agent}
+  presigned-url-enabled: ${MINIO_PRESIGNED_URL_ENABLED:true}
+  presigned-url-expire-seconds: ${MINIO_PRESIGNED_URL_EXPIRE_SECONDS:600}
+
+audio:
+  ffprobe:
+    executable: D:/ffmpeg/bin/ffprobe.exe
+    timeout-seconds: 15
+  analysis:
+    core-pool-size: 2
+    max-pool-size: 4
+    queue-capacity: 100
+    thread-name-prefix: audio-analysis-
+    ffprobe-path: D:/ffmpeg/bin/ffprobe.exe
+    ffmpeg-path: ${FFMPEG_EXECUTABLE:D:/ffmpeg/bin/ffmpeg.exe}
+    timeout-seconds: 30
+    dispatch-mode: rabbit
+    silence:
+      enabled: true
+      noise-threshold-db: -45
+      min-duration-ms: 1500
+      timeout-seconds: 60
+      medium-duration-ms: 3000
+      high-duration-ms: 8000
+    loudness:
+      enabled: true
+      timeout-seconds: 60
+      target-lufs: -16.0
+      tolerance-lu: 3.0
+      true-peak-limit-dbfs: -1.0
+      lra-min-lu: 3.0
+      lra-max-lu: 18.0
+    volume-segment:
+      enabled: true
+      low-deviation-lu: 8.0
+      spike-deviation-lu: 6.0
+      min-duration-ms: 1000
+      merge-gap-ms: 300
+      minimum-valid-lufs: -55.0
+      silence-overlap-ratio: 0.5
+      medium-duration-ms: 3000
+      high-duration-ms: 8000
+      medium-deviation-lu: 10.0
+      high-deviation-lu: 15.0
+    noise-risk:
+      enabled: true
+      timeout-seconds: 60
+      frame-duration-ms: 100
+      min-duration-ms: 1500
+      merge-gap-ms: 400
+      silence-overlap-ratio: 0.4
+      spike-overlap-ratio: 0.5
+      minimum-rms-dbfs: -50.0
+      maximum-rms-dbfs: -18.0
+      flatness-threshold: 0.45
+      entropy-threshold: 0.70
+      stability-window-size: 8
+      maximum-rms-variation-db: 4.0
+      candidate-score: 0.60
+      medium-duration-ms: 4000
+      high-duration-ms: 10000
+      medium-score: 0.65
+      high-score: 0.82
+    report:
+      enabled: true
+      version: "1.0"
+      overlap-threshold-ratio: 0.5
+      overlap-discount-ratio: 0.5
+      max-key-issues: 5
+      max-recommendations: 6
+      score:
+        silence-low: 2
+        silence-medium: 5
+        silence-high: 9
+        volume-drop-low: 3
+        volume-drop-medium: 6
+        volume-drop-high: 10
+        volume-spike-low: 3
+        volume-spike-medium: 7
+        volume-spike-high: 12
+        noise-risk-low: 4
+        noise-risk-medium: 8
+        noise-risk-high: 15
+        loudness-abnormal: 6
+        peak-risk: 8
+        dynamic-range-narrow: 3
+        dynamic-range-wide: 4
+        silence-ratio-threshold: 0.30
+        silence-ratio-penalty: 5
+      grade:
+        excellent-min: 90
+        good-min: 75
+        fair-min: 60
+    processing-plan:
+      enabled: true
+      version: 1
+      max-steps: 20
+      many-steps-threshold: 8
+      silence:
+        medium-trim-enabled: true
+        high-trim-enabled: true
+        keep-head-ms: 200
+        keep-tail-ms: 200
+      gain:
+        increase-db: 3.0
+        decrease-db: -3.0
+        max-absolute-db: 6.0
+        merge-gap-ms: 300
+      denoise:
+        default-strength: LIGHT
+        default-confidence: MEDIUM
+        requires-confirmation: true
+    retry:
+      max-attempts: 3
+      delay-milliseconds: 10000
+
+  processing:
+    enabled: ${AUDIO_PROCESSING_ENABLED:true}
+    max-retry-count: 3
+    execution-timeout-seconds: 600
+    retry-delay-milliseconds: 10000
+    temp-root: ${java.io.tmpdir}/audio-agent/executions
+    output:
+      format: wav
+      codec: pcm_s16le
+      sample-rate: 48000
+      channels: preserve
+    denoise:
+      light-noise-floor-db: -35
+      medium-noise-floor-db: -30
+    loudness:
+      target-lra: 11
+    validation:
+      minimum-output-duration-ms: 500
+      minimum-output-size-bytes: 1024
+      duration-tolerance-ms: 1000
+
+  transcription:
+    enabled: ${AUDIO_TRANSCRIPTION_ENABLED:true}
+    asr-base-url: ${ASR_BASE_URL:http://127.0.0.1:8090}
+    connect-timeout-seconds: 10
+    read-timeout-seconds: 600
+    language: zh
+    speaker-diarization: false
+    max-retry-count: 3
+    retry-delay-milliseconds: 10000
+    ffmpeg-timeout-seconds: 600
+    temp-root: ${java.io.tmpdir}/audio-agent/transcriptions
+    provider: funasr
+    model-name: paraformer-zh
+    max-segment-count: 20000
+
+audio-agent:
+  agent:
+    model-name: ${AGENT_MODEL_NAME:${DEEPSEEK_MODEL:deepseek-v4-pro}}
+    prompt-version: transcript-chat-v1
+    temperature: 0.2
+    answer-max-tokens: 1200
+    history-message-limit: 10
+    context-max-chars: 12000
+    context-max-segments: 60
+    max-question-chars: 2000
+    request-timeout-seconds: 180
+  ai:
+    deepseek:
+      enabled: ${DEEPSEEK_ENABLED:true}
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+      connect-timeout-seconds: 10
+      read-timeout-seconds: 180
+      max-tokens: 8192
+      temperature: 0.2
+      max-input-chars: 60000
+      max-retry-count: 2
+      retry-delay-milliseconds: 3000
+      max-chunk-chars: 3000
+      max-map-calls: 8
+      max-output-chars: 120000
+      max-evidence-quote-chars: 100

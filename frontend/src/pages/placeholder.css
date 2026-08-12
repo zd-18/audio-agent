@@ -1,0 +1,47 @@
+.audio-placeholder {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(160, 104, 255, 0.28), transparent 38%),
+    radial-gradient(circle at 80% 80%, rgba(79, 124, 255, 0.22), transparent 36%),
+    #060218;
+}
+
+.audio-placeholder__panel {
+  width: min(620px, 100%);
+  padding: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 28px;
+  background: rgba(12, 8, 39, 0.74);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+}
+
+.audio-placeholder__back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 8px;
+  color: #cbb5ff;
+}
+
+.audio-placeholder__panel p {
+  margin: 48px 0 12px;
+  color: #35d9c5;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.audio-placeholder__panel h1 {
+  margin: 0 0 20px;
+  font-size: clamp(32px, 6vw, 56px);
+}
+
+.audio-placeholder__panel span {
+  color: #b9b3ce;
+  font-size: 16px;
+  line-height: 1.7;
+}

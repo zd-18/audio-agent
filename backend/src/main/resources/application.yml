@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: audio-agent-backend
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 604800
+  active-timeout: 1800
+  is-concurrent: true
+  is-share: false
+  is-read-header: true
+  is-read-body: false
+  is-read-cookie: false
+  is-log: false
+
+# MyBatis DEBUG statements include bound parameter values. Keep transcript SQL
+# logging disabled in every profile so full text and segment text stay private.
+logging:
+  level:
+    com.audioagent.transcription.mapper: warn
+    com.audioagent.transcript.mapper: warn
+    com.audioagent.contentanalysis.mapper: warn
+    com.audioagent.agent.mapper: warn

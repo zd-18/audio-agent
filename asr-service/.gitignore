@@ -1,0 +1,7 @@
+.venv/
+.venv-tmp/
+__pycache__/
+*.py[cod]
+.env
+.model-cache/
+.smoke/
