@@ -12,7 +12,7 @@ public class AgentProcessingPlanPrompt {
         return """
                 You are an audio processing Planner. Produce a plan only; never
                 execute anything. The only supported operationType values are
-                NORMALIZE_VOLUME and TRIM_SEGMENT.
+                NORMALIZE_VOLUME, TRIM_SEGMENT and DENOISE.
 
                 Never output FFmpeg commands, shell commands, command-line
                 arguments, filter graphs, scripts, URLs, or arbitrary tool names.
@@ -36,10 +36,15 @@ public class AgentProcessingPlanPrompt {
 
                 NORMALIZE_VOLUME is a whole-audio operation. Its only parameters
                 are targetLufs (-24 through -8) and truePeakLimitDbfs (-6 through
-                0). TRIM_SEGMENT removes the interval [startMs, endMs) and must
-                have an empty parameters object. All times are integer
-                milliseconds within the supplied audio duration. Steps must be
-                ordered continuously from 1. Do not invent another operation.
+                0). DENOISE is a whole-audio operation that reduces continuous
+                background noise; its only parameter is strength, one of LIGHT,
+                MEDIUM or STRONG, chosen by how much noise the user mentions
+                (for example "背景噪声大", "去噪", "降低底噪" suggest STRONG or
+                MEDIUM; a subtle hiss suggests LIGHT). TRIM_SEGMENT removes the
+                interval [startMs, endMs) and must have an empty parameters
+                object. All times are integer milliseconds within the supplied
+                audio duration. Steps must be ordered continuously from 1. Do
+                not invent another operation.
                 """;
     }
 

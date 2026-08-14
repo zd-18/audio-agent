@@ -56,6 +56,19 @@ const EDITABLE_PARAMETERS: Record<ProcessingOperationType, EditableParameterDefi
     },
   ],
   TRIM_SEGMENT: [],
+  DENOISE: [
+    {
+      key: 'strength',
+      label: '降噪强度',
+      kind: 'select',
+      options: [
+        { value: 'LIGHT', label: '轻度' },
+        { value: 'MEDIUM', label: '中度' },
+        { value: 'STRONG', label: '强力' },
+      ],
+      helper: '轻度适合轻微底噪，强力适合明显持续噪声。',
+    },
+  ],
   REVIEW_SILENCE: [],
   TRIM_SILENCE: [
     {

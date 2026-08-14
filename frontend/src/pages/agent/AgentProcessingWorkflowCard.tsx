@@ -5,6 +5,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons'
 import { Alert, Button } from 'antd'
+import { useNavigate } from 'react-router-dom'
 import type { AgentProcessingWorkflow } from '../../types/agent'
 import { formatDuration } from '../../utils/formatters'
 
@@ -44,6 +45,7 @@ export default function AgentProcessingWorkflowCard({
 }) {
   const activeIndex = ACTIVE_INDEX[workflow.status]
   const failed = workflow.status === 'FAILED'
+  const navigate = useNavigate()
 
   return (
     <section className={`agent-workflow-card${failed ? ' is-failed' : ''}`} aria-label="音频处理进度">
@@ -109,7 +111,23 @@ export default function AgentProcessingWorkflowCard({
       )}
 
       {workflow.status === 'SUCCESS' && (
-        <Alert type="success" showIcon message="音频处理完成" description="结果已通过检查并保存，可以前往处理任务中查看。" />
+        <Alert
+          type="success"
+          showIcon
+          message="音频处理完成"
+          description="结果已通过检查并保存，可以前往处理任务中查看。"
+          action={workflow.executionId
+            ? (
+              <Button
+                type="primary"
+                size="small"
+                onClick={() => navigate(`/analysis/tasks/${workflow.taskId}/processing-execution`)}
+              >
+                查看处理结果
+              </Button>
+            )
+            : undefined}
+        />
       )}
       {failed && (
         <Alert

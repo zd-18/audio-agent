@@ -5,6 +5,7 @@ export type ProcessingPlanStatus = 'DRAFT' | 'READY' | 'INVALID'
 export type ProcessingOperationType =
   | 'NORMALIZE_VOLUME'
   | 'TRIM_SEGMENT'
+  | 'DENOISE'
   | 'REVIEW_SILENCE'
   | 'TRIM_SILENCE'
   | 'INCREASE_GAIN'

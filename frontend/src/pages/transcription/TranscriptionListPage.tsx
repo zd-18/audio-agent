@@ -1,7 +1,7 @@
 import { EyeOutlined, FileTextOutlined, ReloadOutlined, UndoOutlined } from '@ant-design/icons'
 import { Alert, Button, Progress, Select, Table, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import TranscriptionStatusBadge from '../../components/transcription/TranscriptionStatusBadge'
 import EmptyState from '../../components/workbench/EmptyState'
@@ -18,6 +18,9 @@ import {
 import './transcription.css'
 
 const PAGE_SIZES = [10, 20, 50]
+
+/** 所有列宽之和（scroll.x 必须等于该值，fixed 列才能精确对齐） */
+const TABLE_MIN_WIDTH = 1360
 const STATUS_OPTIONS: { value: TranscriptionTaskStatus; label: string }[] = [
   { value: 'PENDING', label: '等待处理' },
   { value: 'RUNNING', label: '正在转写' },
@@ -46,6 +49,20 @@ export default function TranscriptionListPage() {
   const status = parseStatus(searchParams.get('status'))
   const query = useMemo(() => ({ current, size, status }), [current, size, status])
   const { data, loading, error, refresh } = useTranscriptionTaskList(query)
+  const [fixedColumns, setFixedColumns] = useState(true)
+  const panelRef = useRef<HTMLElement | null>(null)
+
+  // 容器放不下整张表（窄窗口）时取消左右固定列，避免固定列在默认滚动位置压住相邻列；
+  // 放得下时保持 fixed: 'left' / 'right'，列贴边缘、与内容区无缝邻接。
+  useEffect(() => {
+    const el = panelRef.current
+    if (!el) return
+    const observer = new ResizeObserver(() => {
+      setFixedColumns(el.clientWidth >= TABLE_MIN_WIDTH)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const replaceQuery = (next: { current: number; size: number; status?: TranscriptionTaskStatus }) => {
     const params = new URLSearchParams()
@@ -57,7 +74,7 @@ export default function TranscriptionListPage() {
 
   const columns: ColumnsType<TranscriptionTask> = [
     {
-      title: '音频文件', dataIndex: 'audioFileName', width: 280,
+      title: '音频文件', dataIndex: 'audioFileName', width: 280, fixed: fixedColumns ? 'left' : undefined,
       render: (value: string | null, record) => (
         <div className="transcription-list__file">
           <strong title={value || undefined}>{value || '未命名音频'}</strong>
@@ -65,9 +82,9 @@ export default function TranscriptionListPage() {
         </div>
       ),
     },
-    { title: '状态', dataIndex: 'status', width: 140, render: (value: string) => <TranscriptionStatusBadge status={value} /> },
+    { title: '状态', dataIndex: 'status', width: 150, render: (value: string) => <TranscriptionStatusBadge status={value} /> },
     {
-      title: '进度', dataIndex: 'progressPercent', width: 180,
+      title: '进度', dataIndex: 'progressPercent', width: 190,
       render: (value: number, record) => {
         const progress = clampTranscriptionProgress(value)
         return (
@@ -85,18 +102,24 @@ export default function TranscriptionListPage() {
         )
       },
     },
-    { title: '语言', dataIndex: 'language', width: 90, render: (value: string) => value.toUpperCase() },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180, render: formatDateTime },
+    { title: '语言', dataIndex: 'language', width: 100, render: (value: string) => value.toUpperCase() },
+    { title: '创建时间', dataIndex: 'createdAt', width: 190, render: formatDateTime },
     {
-      title: '失败原因', dataIndex: 'failureMessage', width: 240, ellipsis: { showTitle: false },
-      render: (value?: string | null) => <Tooltip title={value}>{value || '—'}</Tooltip>,
+      title: '失败原因', dataIndex: 'failureMessage', width: 300, ellipsis: { showTitle: false },
+      render: (value?: string | null) => (
+        <Tooltip title={value}>
+          <span className="transcription-list__failure">{value || '—'}</span>
+        </Tooltip>
+      ),
     },
     {
-      title: '操作', key: 'actions', fixed: 'right', width: 130,
+      title: '操作', key: 'actions', fixed: fixedColumns ? 'right' : undefined, width: 150,
       render: (_, record) => (
-        <Link to={`/transcriptions/${encodeURIComponent(record.taskId)}`}>
-          <Button type="link" icon={<EyeOutlined />}>{record.status === 'SUCCESS' ? '文字稿' : '查看'}</Button>
-        </Link>
+        <span className="transcription-list__actions">
+          <Link to={`/transcriptions/${encodeURIComponent(record.taskId)}`}>
+            <Button type="link" icon={<EyeOutlined />}>{record.status === 'SUCCESS' ? '文字稿' : '查看'}</Button>
+          </Link>
+        </span>
       ),
     },
   ]
@@ -127,14 +150,15 @@ export default function TranscriptionListPage() {
 
       {error && <Alert className="resource-detail-alert" type="error" showIcon message="转写任务列表加载失败" description={error} action={<Button onClick={refresh}>重试</Button>} />}
 
-      <section className="workbench-panel transcription-list-panel">
+      <section ref={panelRef} className="workbench-panel transcription-list-panel">
         <div className="workbench-panel__heading"><div><span>TRANSCRIPTION TASKS</span><h3>转写任务</h3></div><small>共 {data.total.toLocaleString('zh-CN')} 条</small></div>
         <Table<TranscriptionTask>
           rowKey="taskId"
           columns={columns}
           dataSource={data.records}
           loading={loading}
-          scroll={{ x: 1240 }}
+          scroll={{ x: TABLE_MIN_WIDTH }}
+          tableLayout="fixed"
           locale={{ emptyText: <EmptyState title="暂无转写任务" description="从音频文件页选择一个可用文件并生成文字稿。" action={<Link to="/audio/files"><Button type="primary">选择音频</Button></Link>} /> }}
           pagination={{
             current: data.current,

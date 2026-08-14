@@ -30,7 +30,7 @@ class RuleBasedProcessingPlanGeneratorTest {
     }
 
     @Test
-    void generatesOnlyNormalizeVolumeAndTrimSegment() {
+    void generatesOnlyExecutableNormalizeTrimAndDenoise() {
         ProcessingPlanDraft plan = generate(List.of(
                         issue(1, "SILENCE", "HIGH", 1_000, 3_000),
                         issue(2, "VOLUME_DROP", "HIGH", 3_000, 4_000),
@@ -39,9 +39,71 @@ class RuleBasedProcessingPlanGeneratorTest {
                 preferences(ProcessingStrategy.BALANCED));
 
         assertEquals(List.of(ProcessingOperationType.TRIM_SEGMENT,
+                        ProcessingOperationType.DENOISE,
                         ProcessingOperationType.NORMALIZE_VOLUME),
                 plan.steps().stream().map(
                         ProcessingStepDraft::operationType).toList());
+        assertTrue(plan.steps().stream().allMatch(step ->
+                step.operationType().isExecutable()));
+    }
+
+    @Test
+    void highNoiseRiskPlansStrongWholeAudioDenoise() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "NOISE_RISK", "HIGH", 0, 8_000)),
+                loudnessReport("NORMAL"), 8_000,
+                preferences(ProcessingStrategy.CONSERVATIVE));
+
+        assertEquals(List.of(ProcessingOperationType.DENOISE),
+                plan.steps().stream().map(
+                        ProcessingStepDraft::operationType).toList());
+        ProcessingStepDraft denoise = plan.steps().getFirst();
+        assertEquals("STRONG", denoise.parameters().get("strength"));
+        assertEquals(ProcessingPriority.HIGH, denoise.priority());
+        assertEquals(null, denoise.startMs());
+        assertEquals(null, denoise.endMs());
+        assertEquals(8_000L, plan.estimatedOutputDurationMs());
+    }
+
+    @Test
+    void mediumNoiseRiskPlansMediumDenoise() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "NOISE_RISK", "MEDIUM", 1_000, 4_000)),
+                loudnessReport("NORMAL"), 8_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        ProcessingStepDraft denoise = plan.steps().getFirst();
+        assertEquals(ProcessingOperationType.DENOISE,
+                denoise.operationType());
+        assertEquals("MEDIUM", denoise.parameters().get("strength"));
+        assertEquals(ProcessingPriority.MEDIUM, denoise.priority());
+    }
+
+    @Test
+    void lowNoiseRiskDoesNotPlanDenoise() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "NOISE_RISK", "LOW", 1_000, 4_000)),
+                loudnessReport("NORMAL"), 8_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        assertTrue(plan.steps().isEmpty());
+    }
+
+    @Test
+    void multipleNoiseRisksAggregateIntoSingleStrongestDenoise() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "NOISE_RISK", "MEDIUM", 0, 2_000),
+                        issue(2, "NOISE_RISK", "HIGH", 3_000, 6_000),
+                        issue(3, "NOISE_RISK", "LOW", 6_000, 7_000)),
+                loudnessReport("NORMAL"), 8_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        assertEquals(1, plan.steps().size());
+        ProcessingStepDraft denoise = plan.steps().getFirst();
+        assertEquals(ProcessingOperationType.DENOISE,
+                denoise.operationType());
+        assertEquals("STRONG", denoise.parameters().get("strength"));
+        assertEquals(2L, denoise.sourceIssueId());
     }
 
     @Test

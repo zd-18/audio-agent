@@ -25,11 +25,22 @@ public class ProcessingPlanSummaryBuilder {
                 ProcessingOperationType.TRIM_SEGMENT);
         boolean normalize = contains(steps,
                 ProcessingOperationType.NORMALIZE_VOLUME);
+        boolean denoise = contains(steps,
+                ProcessingOperationType.DENOISE);
         if (trim && normalize) {
             return "建议先裁剪已标记片段，再统一整段音量。";
         }
+        if (trim && denoise) {
+            return "建议先裁剪已标记片段，再降低背景噪声。";
+        }
         if (trim) {
             return "检测到可裁剪片段，请试听并确认时间范围。";
+        }
+        if (denoise && normalize) {
+            return "建议先降低背景噪声，再统一整段音量。";
+        }
+        if (denoise) {
+            return "检测到持续背景噪声，建议执行智能降噪。";
         }
         return "检测到整体音量偏差，建议执行音量标准化。";
     }

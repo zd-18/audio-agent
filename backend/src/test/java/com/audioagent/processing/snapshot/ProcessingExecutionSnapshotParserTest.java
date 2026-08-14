@@ -76,6 +76,35 @@ class ProcessingExecutionSnapshotParserTest {
     }
 
     @Test
+    void acceptsDenoiseWithValidStrength() throws Exception {
+        ProcessingExecutionSnapshot result = parse(List.of(step(1,
+                "DENOISE", "ACCEPTED", null, null,
+                Map.of("strength", "MEDIUM"))));
+
+        assertEquals("DENOISE",
+                result.acceptedSteps().getFirst().operationType());
+        assertEquals("MEDIUM", result.acceptedSteps().getFirst()
+                .effectiveParameters().get("strength"));
+    }
+
+    @Test
+    void rejectsDenoiseWithInvalidStrength() {
+        assertThrows(ProcessingExecutionException.class,
+                () -> parse(List.of(step(1, "DENOISE", "ACCEPTED",
+                        null, null, Map.of("strength", "EXTREME")))));
+    }
+
+    @Test
+    void rejectsDuplicateWholeAudioOperations() {
+        assertThrows(ProcessingExecutionException.class,
+                () -> parse(List.of(
+                        step(1, "DENOISE", "ACCEPTED", null, null,
+                                Map.of("strength", "LIGHT")),
+                        normalize(2, Map.of("targetLufs", -16,
+                                "truePeakLimitDbfs", -1)))));
+    }
+
+    @Test
     void normalizeTargetOutsideSafeRangeIsRejected() {
         assertThrows(ProcessingExecutionException.class,
                 () -> parse(List.of(normalize(1,

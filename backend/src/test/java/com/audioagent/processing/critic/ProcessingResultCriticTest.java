@@ -48,6 +48,18 @@ class ProcessingResultCriticTest {
                         List.of(step("FAILED")), 1));
     }
 
+    @Test
+    void acceptsDenoiseResultWithPreservedDurationAndSuccessfulSteps()
+            throws Exception {
+        ProcessingResultCritic critic = new ProcessingResultCritic(
+                new ProcessingOutputValidator(properties()));
+        Path output = Files.write(tempDirectory.resolve("result.wav"),
+                new byte[64]);
+
+        assertDoesNotThrow(() -> critic.review(output, metadata(5_000),
+                5_000, List.of(step("SUCCESS", "DENOISE")), 1));
+    }
+
     private AudioProcessingProperties properties() {
         AudioProcessingProperties properties = new AudioProcessingProperties();
         properties.getValidation().setMinimumOutputSizeBytes(1);
@@ -62,9 +74,15 @@ class ProcessingResultCriticTest {
     }
 
     private AudioProcessingExecutionStep step(String status) {
+        return step(status, null);
+    }
+
+    private AudioProcessingExecutionStep step(String status,
+                                              String operationType) {
         AudioProcessingExecutionStep step = new AudioProcessingExecutionStep();
         step.setStepOrder(1);
         step.setExecutionStatus(status);
+        step.setOperationType(operationType);
         return step;
     }
 }

@@ -9,7 +9,7 @@ import {
 
 const STAGE_GROUPS = [
   { label: '准备', stages: ['PREPARING'] },
-  { label: '处理', stages: ['LOCAL_PROCESSING', 'TRIMMING', 'LOUDNESS_NORMALIZING', 'PEAK_LIMITING'] },
+  { label: '处理', stages: ['LOCAL_PROCESSING', 'TRIMMING', 'DENOISING', 'LOUDNESS_NORMALIZING', 'PEAK_LIMITING'] },
   { label: '保存', stages: ['UPLOADING', 'METADATA_EXTRACTING'] },
   { label: '完成', stages: ['COMPLETED'] },
 ] as const

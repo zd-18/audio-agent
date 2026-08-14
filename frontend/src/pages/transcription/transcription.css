@@ -9,11 +9,47 @@
 .transcription-filter > div { display: grid; min-width: 220px; gap: 8px; }
 .transcription-filter label { color: var(--workbench-text-secondary); font-weight: 600; }
 .transcription-list-panel { min-width: 0; }
+.transcription-list-panel .ant-table { background: transparent; }
+.transcription-list-panel .ant-table-wrapper { min-width: 0; }
 .transcription-list__file { display: grid; min-width: 0; gap: 5px; }
-.transcription-list__file strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.transcription-list__file a { width: fit-content; font-size: 12px; }
+.transcription-list__file strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transcription-list__file a { width: fit-content; font-size: 12px; white-space: nowrap; }
 .transcription-list__progress { display: grid; grid-template-columns: minmax(80px, 1fr) 42px; align-items: center; gap: 10px; }
 .transcription-list__progress span { color: var(--workbench-text-secondary); font-variant-numeric: tabular-nums; }
+.transcription-list__failure { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transcription-list__actions { display: inline-flex; align-items: center; min-width: 0; white-space: nowrap; }
+.transcription-list__actions .ant-btn { min-height: 36px; padding-inline: 6px; }
+
+/* fixed 列：不透明实体背景（正常 / hover / selected / selected+hover 四态），
+   与 antd 普通 td 的三态实色（#141414 表格底 / #282828 hover / rgb(61,47,91) 选中行）保持一致，
+   避免半透明背景让相邻列文字透出。选择器需 ≥5 个类才能压过 antd 的选中行规则 (0,5,0)。 */
+.transcription-list-panel .ant-table-thead .ant-table-cell-fix-left,
+.transcription-list-panel .ant-table-thead .ant-table-cell-fix-right,
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row > td.ant-table-cell-fix-left,
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row > td.ant-table-cell-fix-right {
+  background: #141414;
+}
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left,
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
+  background: #282828;
+}
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row.ant-table-row-selected > td.ant-table-cell-fix-left,
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row.ant-table-row-selected > td.ant-table-cell-fix-right {
+  background: #3d2f5b;
+}
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row.ant-table-row-selected:hover > td.ant-table-cell-fix-left,
+.transcription-list-panel .ant-table-tbody > tr.ant-table-row.ant-table-row-selected:hover > td.ant-table-cell-fix-right {
+  background: #513c7e;
+}
+/* fixed 列分隔阴影：右侧固定列左侧阴影、左侧固定列右侧阴影 */
+.transcription-list-panel .ant-table-cell-fix-right-first::after,
+.transcription-list-panel .ant-table-thead .ant-table-cell-fix-right-first::after {
+  box-shadow: -8px 0 8px rgba(0, 0, 0, 0.5);
+}
+.transcription-list-panel .ant-table-cell-fix-left-last::after,
+.transcription-list-panel .ant-table-thead .ant-table-cell-fix-left-last::after {
+  box-shadow: 8px 0 8px rgba(0, 0, 0, 0.5);
+}
 
 .transcription-status { border-radius: 999px; }
 .transcription-status.is-empty { color: var(--workbench-text-muted); border-color: var(--workbench-border); background: rgba(255, 255, 255, .025); }

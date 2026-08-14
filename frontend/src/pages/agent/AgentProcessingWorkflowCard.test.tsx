@@ -1,10 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentProcessingWorkflow } from '../../types/agent'
 import AgentProcessingWorkflowCard from './AgentProcessingWorkflowCard'
 
 function workflow(
   status: AgentProcessingWorkflow['status'],
+  executionId: string | null = status === 'WAITING_CONFIRMATION' ? null : '601',
 ): AgentProcessingWorkflow {
   return {
     workflowId: '700',
@@ -15,7 +17,7 @@ function workflow(
     audioFileId: '21',
     planId: '401',
     confirmationId: '501',
-    executionId: status === 'WAITING_CONFIRMATION' ? null : '601',
+    executionId,
     resultFileId: status === 'SUCCESS' ? '701' : null,
     status,
     summary: '裁剪无关片段并统一音量',
@@ -37,15 +39,42 @@ function workflow(
   }
 }
 
+function renderCard(workflow: AgentProcessingWorkflow) {
+  let location: ReturnType<typeof useLocation> | null = null
+  function LocationProbe() {
+    location = useLocation()
+    return null
+  }
+  const result = render(
+    <MemoryRouter
+      initialEntries={['/transcriptions/10/agent']}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <AgentProcessingWorkflowCard
+        workflow={workflow}
+        confirming={false}
+        onConfirm={vi.fn()}
+      />
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+  return {
+    currentLocation: () => location,
+    unmount: () => result.unmount(),
+  }
+}
+
 describe('AgentProcessingWorkflowCard', () => {
   it('requires explicit confirmation before processing', () => {
     const onConfirm = vi.fn()
     render(
-      <AgentProcessingWorkflowCard
-        workflow={workflow('WAITING_CONFIRMATION')}
-        confirming={false}
-        onConfirm={onConfirm}
-      />,
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AgentProcessingWorkflowCard
+          workflow={workflow('WAITING_CONFIRMATION')}
+          confirming={false}
+          onConfirm={onConfirm}
+        />
+      </MemoryRouter>,
     )
 
     expect(screen.getByText('等待确认')).toBeInTheDocument()
@@ -55,15 +84,46 @@ describe('AgentProcessingWorkflowCard', () => {
 
   it('shows a clear critic failure reason', () => {
     render(
-      <AgentProcessingWorkflowCard
-        workflow={workflow('FAILED')}
-        confirming={false}
-        onConfirm={vi.fn()}
-      />,
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <AgentProcessingWorkflowCard
+          workflow={workflow('FAILED')}
+          confirming={false}
+          onConfirm={vi.fn()}
+        />
+      </MemoryRouter>,
     )
 
     expect(screen.getByText('本次处理未通过检查')).toBeInTheDocument()
     expect(screen.getByText('处理后的音频时长异常')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '确认并开始处理' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '查看处理结果' })).not.toBeInTheDocument()
+  })
+
+  it('navigates to the execution result page after success', () => {
+    const { currentLocation } = renderCard(workflow('SUCCESS'))
+
+    fireEvent.click(screen.getByRole('button', { name: '查看处理结果' }))
+
+    expect(currentLocation()?.pathname)
+      .toBe('/analysis/tasks/31/processing-execution')
+  })
+
+  it('hides the result button when no execution exists', () => {
+    renderCard(workflow('SUCCESS', null))
+
+    expect(screen.getByText('音频处理完成')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '查看处理结果' }))
+      .not.toBeInTheDocument()
+  })
+
+  it('hides the result button while executing or waiting', () => {
+    const { unmount } = renderCard(workflow('EXECUTING'))
+    expect(screen.queryByRole('button', { name: '查看处理结果' }))
+      .not.toBeInTheDocument()
+    unmount()
+
+    renderCard(workflow('WAITING_CONFIRMATION'))
+    expect(screen.queryByRole('button', { name: '查看处理结果' }))
+      .not.toBeInTheDocument()
   })
 })

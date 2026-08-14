@@ -59,7 +59,7 @@ public class AgentProcessingPlanParser {
 
             List<ProcessingStepDraft> steps = new ArrayList<>();
             List<Range> trimRanges = new ArrayList<>();
-            boolean hasNormalization = false;
+            boolean hasWholeAudioOperation = false;
             for (int index = 0; index < rawSteps.size(); index++) {
                 JsonNode node = rawSteps.get(index);
                 requireObject(node, "Each Planner step must be an object");
@@ -74,11 +74,14 @@ public class AgentProcessingPlanParser {
                 Long endMs = nullableLong(node, "endMs");
                 String reason = text(node, "reason", 500);
 
-                if (operation == ProcessingOperationType.NORMALIZE_VOLUME) {
-                    if (hasNormalization || startMs != null || endMs != null) {
-                        throw invalid("NORMALIZE_VOLUME must be a single whole-audio step", null);
+                if (operation == ProcessingOperationType.NORMALIZE_VOLUME
+                        || operation == ProcessingOperationType.DENOISE) {
+                    if (hasWholeAudioOperation || startMs != null
+                            || endMs != null) {
+                        throw invalid(operation
+                                + " must be a single whole-audio step", null);
                     }
-                    hasNormalization = true;
+                    hasWholeAudioOperation = true;
                 } else {
                     if (!parameters.isEmpty() || startMs == null || endMs == null
                             || startMs < 0 || endMs <= startMs

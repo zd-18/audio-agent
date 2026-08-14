@@ -1,5 +1,5 @@
-import { CloudUploadOutlined, DownloadOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons'
-import { Alert, Button, Input, Select, Space, Table, Tooltip, Typography } from 'antd'
+import { CloudUploadOutlined, DownloadOutlined, DownOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons'
+import { Alert, Button, Dropdown, Input, Select, Table, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -26,6 +26,9 @@ const FILE_STATUSES = [
 ]
 
 const PAGE_SIZES = [10, 20, 50]
+
+/** 所有列宽之和（scroll.x 必须等于该值，fixed 列才能精确对齐） */
+const TABLE_MIN_WIDTH = 1310
 
 function parsePageNumber(value: string | null, fallback: number) {
   const parsed = Number(value)
@@ -63,6 +66,8 @@ export default function AudioFileLookupPage() {
   const [statusDraft, setStatusDraft] = useState<string | undefined>(status)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [fixedActions, setFixedActions] = useState(true)
+  const panelRef = useRef<HTMLElement | null>(null)
   const downloadControllerRef = useRef<AbortController | null>(null)
   const downloadInFlightRef = useRef(false)
   const query = useMemo(() => ({ current, size, keyword, status }), [current, size, keyword, status])
@@ -74,6 +79,18 @@ export default function AudioFileLookupPage() {
   }, [keyword, status])
 
   useEffect(() => () => downloadControllerRef.current?.abort(), [])
+
+  // 容器放不下整张表（窄窗口）时取消操作列固定，避免固定列在默认滚动位置压住"转写状态/上传时间"；
+  // 放得下时保持 fixed: 'right'，列贴右缘、与上传时间无缝邻接。
+  useEffect(() => {
+    const el = panelRef.current
+    if (!el) return
+    const observer = new ResizeObserver(() => {
+      setFixedActions(el.clientWidth >= TABLE_MIN_WIDTH)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const replaceQuery = (next: { current: number; size: number; keyword?: string; status?: string }) => {
     const params = new URLSearchParams()
@@ -117,7 +134,7 @@ export default function AudioFileLookupPage() {
     {
       title: '文件名称',
       dataIndex: 'originalFileName',
-      width: 260,
+      width: 300,
       render: (value: string | undefined, record) => (
         <div className="audio-file-list__name">
           <strong title={value}>{value || '未命名文件'}</strong>
@@ -125,24 +142,59 @@ export default function AudioFileLookupPage() {
         </div>
       ),
     },
-    { title: '文件类型', dataIndex: 'contentType', width: 150, render: (value?: string) => value || '—' },
-    { title: '文件大小', dataIndex: 'fileSize', width: 110, render: formatBytes },
-    { title: '音频时长', dataIndex: 'duration', width: 110, render: formatDuration },
+    { title: '文件类型', dataIndex: 'contentType', width: 130, render: (value?: string) => value || '—' },
+    { title: '文件大小', dataIndex: 'fileSize', width: 100, render: formatBytes },
+    { title: '音频时长', dataIndex: 'duration', width: 100, render: formatDuration },
     { title: '文件状态', dataIndex: 'status', width: 110, render: (value?: string) => <AudioFileStatusBadge status={value} /> },
     { title: '转写状态', dataIndex: 'transcriptionStatus', width: 130, render: (value?: string | null) => <TranscriptionStatusBadge status={value} /> },
-    { title: '上传时间', dataIndex: 'createdAt', width: 170, render: formatDateTime },
+    {
+      title: '上传时间',
+      dataIndex: 'createdAt',
+      width: 180,
+      render: (value?: string | null) => (
+        <span className="audio-file-list__time">{formatDateTime(value ?? undefined)}</span>
+      ),
+    },
     {
       title: '操作',
       key: 'actions',
-      fixed: 'right',
-      width: 430,
+      fixed: fixedActions ? 'right' : undefined,
+      width: 260,
       render: (_, record) => (
-        <Space size={2} wrap className="audio-file-list__actions">
+        <div className="audio-file-list__actions">
           <Link to={`/audio/files/${record.audioFileId}`}><Button type="link" size="small" icon={<EyeOutlined />}>详情</Button></Link>
           <CreateAnalysisTaskButton audioFileId={record.audioFileId} fileName={record.originalFileName} buttonType="link" size="small" label="创建任务" />
-          <CreateTranscriptionButton audioFileId={record.audioFileId} taskId={record.transcriptionTaskId} status={record.transcriptionStatus} buttonType="link" size="small" />
-          <Button type="link" size="small" icon={<DownloadOutlined />} loading={downloadingId === record.audioFileId} disabled={downloadingId !== null && downloadingId !== record.audioFileId} onClick={() => download(record)}>下载</Button>
-        </Space>
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'transcription',
+                  label: (
+                    <span className="audio-file-list__menu-button">
+                      <CreateTranscriptionButton
+                        audioFileId={record.audioFileId}
+                        taskId={record.transcriptionTaskId}
+                        status={record.transcriptionStatus}
+                        buttonType="text"
+                        size="small"
+                        block
+                      />
+                    </span>
+                  ),
+                },
+                {
+                  key: 'download',
+                  label: downloadingId === record.audioFileId ? '下载中…' : '下载',
+                  icon: <DownloadOutlined />,
+                  disabled: downloadingId !== null && downloadingId !== record.audioFileId,
+                  onClick: () => download(record),
+                },
+              ],
+            }}
+          >
+            <Button type="link" size="small" icon={<DownOutlined />}>更多</Button>
+          </Dropdown>
+        </div>
       ),
     },
   ]
@@ -169,14 +221,15 @@ export default function AudioFileLookupPage() {
 
       {(error || downloadError) && <Alert className="resource-detail-alert" type="error" showIcon message={error ? '文件列表查询失败' : '文件下载失败'} description={error || downloadError} action={error ? <Button onClick={refresh}>重试</Button> : undefined} closable={Boolean(downloadError)} onClose={() => setDownloadError(null)} />}
 
-      <section className="workbench-panel audio-file-list-panel">
+      <section ref={panelRef} className="workbench-panel audio-file-list-panel">
         <div className="workbench-panel__heading"><div><span>REAL DATA</span><h3>文件列表</h3></div><small>共 {data.total.toLocaleString('zh-CN')} 条 · 第 {data.pages === 0 ? 0 : data.current} / {data.pages} 页</small></div>
         <Table<AudioFileListItem>
           rowKey="audioFileId"
           columns={columns}
           dataSource={data.records}
           loading={loading}
-          scroll={{ x: 1480 }}
+          scroll={{ x: TABLE_MIN_WIDTH }}
+          tableLayout="fixed"
           locale={{ emptyText: <EmptyState title="暂无音频文件" description="当前筛选条件下没有记录，可以调整条件或上传新音频。" action={<Link to="/audio/upload"><Button type="primary">上传音频</Button></Link>} /> }}
           pagination={{
             current: data.current,

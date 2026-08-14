@@ -26,6 +26,7 @@ export const STAGE_LABELS: Record<ProcessingExecutionStage, string> = {
   PREPARING: '正在处理音频',
   LOCAL_PROCESSING: '正在处理音频',
   TRIMMING: '正在处理音频',
+  DENOISING: '正在处理音频',
   LOUDNESS_NORMALIZING: '正在处理音频',
   PEAK_LIMITING: '正在处理音频',
   UPLOADING: '正在生成结果',
@@ -47,6 +48,7 @@ export const STEP_STATUS_META: Record<
 export const OPERATION_LABELS: Record<ProcessingOperationType, string> = {
   NORMALIZE_VOLUME: '整段音量标准化',
   TRIM_SEGMENT: '裁剪指定片段',
+  DENOISE: '智能降噪',
   REVIEW_SILENCE: '检查静音片段',
   TRIM_SILENCE: '缩短较长静音',
   INCREASE_GAIN: '提升局部音量',

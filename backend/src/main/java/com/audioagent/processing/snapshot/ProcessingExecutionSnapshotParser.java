@@ -52,7 +52,7 @@ public class ProcessingExecutionSnapshotParser {
         }
 
         List<ProcessingExecutionSnapshot.Step> accepted = new ArrayList<>();
-        int normalizeCount = 0;
+        int wholeAudioCount = 0;
         for (ProcessingConfirmationVO.Step step : safe(snapshot.getSteps())) {
             if (!ProcessingStepDecision.ACCEPTED.name().equals(
                     step.getDecision())) {
@@ -78,11 +78,15 @@ public class ProcessingExecutionSnapshotParser {
             if (operation == ProcessingOperationType.TRIM_SEGMENT) {
                 requireRange(step);
             } else {
-                validateNormalization(parameters);
-                normalizeCount += 1;
-                if (normalizeCount > 1) {
+                if (operation == ProcessingOperationType.DENOISE) {
+                    validateDenoiseStrength(parameters);
+                } else {
+                    validateNormalization(parameters);
+                }
+                wholeAudioCount += 1;
+                if (wholeAudioCount > 1) {
                     throw invalidParameter(
-                            "NORMALIZE_VOLUME may appear at most once");
+                            "Whole-audio operations may appear at most once");
                 }
             }
             accepted.add(new ProcessingExecutionSnapshot.Step(
@@ -116,6 +120,15 @@ public class ProcessingExecutionSnapshotParser {
         inRange(number(parameters, "truePeakLimitDbfs"),
                 MIN_TRUE_PEAK_DBFS, MAX_TRUE_PEAK_DBFS,
                 "truePeakLimitDbfs");
+    }
+
+    private void validateDenoiseStrength(Map<String, Object> parameters) {
+        Object value = parameters.get("strength");
+        if (!(value instanceof String strength)
+                || !("LIGHT".equals(strength) || "MEDIUM".equals(strength)
+                || "STRONG".equals(strength))) {
+            throw invalidParameter("strength must be LIGHT, MEDIUM or STRONG");
+        }
     }
 
     private void requireRange(ProcessingConfirmationVO.Step step) {

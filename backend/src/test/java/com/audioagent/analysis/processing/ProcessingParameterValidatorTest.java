@@ -105,6 +105,32 @@ class ProcessingParameterValidatorTest {
     }
 
     @Test
+    void acceptsDenoiseStrengthOverride() {
+        Map<String, Object> result = validator.mergeAndValidate(
+                step("DENOISE", null, null),
+                Map.of("strength", "MEDIUM"),
+                Map.of("strength", "STRONG"));
+
+        assertEquals("STRONG", result.get("strength"));
+    }
+
+    @Test
+    void rejectsUnknownDenoiseStrength() {
+        assertParameterInvalid(() -> validator.mergeAndValidate(
+                step("DENOISE", null, null),
+                Map.of("strength", "MEDIUM"),
+                Map.of("strength", "EXTREME")));
+    }
+
+    @Test
+    void rejectsUnknownDenoiseParameter() {
+        assertParameterInvalid(() -> validator.mergeAndValidate(
+                step("DENOISE", null, null),
+                Map.of("strength", "MEDIUM"),
+                Map.of("nr", 18)));
+    }
+
+    @Test
     void rejectsLoudnessTargetOutsideSafeRange() {
         assertParameterInvalid(() -> validator.mergeAndValidate(
                 step("NORMALIZE_LOUDNESS", null, null),

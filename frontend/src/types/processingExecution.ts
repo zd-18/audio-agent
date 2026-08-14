@@ -13,6 +13,7 @@ export type ProcessingExecutionStage =
   | 'PREPARING'
   | 'LOCAL_PROCESSING'
   | 'TRIMMING'
+  | 'DENOISING'
   | 'LOUDNESS_NORMALIZING'
   | 'PEAK_LIMITING'
   | 'UPLOADING'

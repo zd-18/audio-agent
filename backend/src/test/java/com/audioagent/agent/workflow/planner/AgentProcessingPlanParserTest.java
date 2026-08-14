@@ -47,6 +47,46 @@ class AgentProcessingPlanParserTest {
     }
 
     @Test
+    void parsesDenoiseWholeAudioStep() {
+        var plan = parser.parse("""
+                {
+                  "summary":"智能降噪",
+                  "steps":[
+                    {"order":1,"operationType":"DENOISE",
+                     "parameters":{"strength":"STRONG"},
+                     "startMs":null,"endMs":null,"reason":"背景噪声较大"}
+                  ]
+                }
+                """, 10_000);
+
+        assertEquals(1, plan.steps().size());
+        assertEquals(ProcessingOperationType.DENOISE,
+                plan.steps().getFirst().operationType());
+        assertEquals("STRONG",
+                plan.steps().getFirst().parameters().get("strength"));
+        assertEquals(10_000L, plan.estimatedOutputDurationMs());
+    }
+
+    @Test
+    void rejectsDenoiseWithSegmentRangeOrInvalidStrength() {
+        AgentExecutionException rangeError = assertThrows(
+                AgentExecutionException.class, () -> parser.parse("""
+                {"summary":"降噪","steps":[
+                  {"order":1,"operationType":"DENOISE",
+                   "parameters":{"strength":"MEDIUM"},
+                   "startMs":1000,"endMs":2000,"reason":"降噪"}]}
+                """, 10_000));
+        assertEquals(ErrorCode.AGENT_PLAN_INVALID,
+                rangeError.getErrorCode());
+        assertThrows(AgentExecutionException.class, () -> parser.parse("""
+                {"summary":"降噪","steps":[
+                  {"order":1,"operationType":"DENOISE",
+                   "parameters":{"strength":"EXTREME"},
+                   "startMs":null,"endMs":null,"reason":"降噪"}]}
+                """, 10_000));
+    }
+
+    @Test
     void rejectsUnsupportedOperationType() {
         AgentExecutionException error = assertThrows(
                 AgentExecutionException.class, () -> parser.parse("""

@@ -48,6 +48,7 @@ public class ProcessingParameterValidator {
             case TRIM_SEGMENT -> Set.of();
             case NORMALIZE_VOLUME -> Set.of(
                     "targetLufs", "truePeakLimitDbfs");
+            case DENOISE -> Set.of("strength");
             case TRIM_SILENCE -> Set.of(
                     "suggestedKeepHeadMs", "suggestedKeepTailMs");
             case INCREASE_GAIN, DECREASE_GAIN -> Set.of("suggestedGainDb");
@@ -66,6 +67,7 @@ public class ProcessingParameterValidator {
         switch (operation) {
             case TRIM_SEGMENT -> validateSegmentRange(step);
             case NORMALIZE_VOLUME -> validateNormalization(parameters);
+            case DENOISE -> validateDenoiseStrength(parameters);
             case TRIM_SILENCE -> validateTrim(step, parameters);
             case INCREASE_GAIN -> validateGain(parameters, true);
             case DECREASE_GAIN -> validateGain(parameters, false);
@@ -134,6 +136,15 @@ public class ProcessingParameterValidator {
         if (!(value instanceof String strength)
                 || !("LIGHT".equals(strength) || "MEDIUM".equals(strength))) {
             throw invalid("suggestedStrength must be LIGHT or MEDIUM");
+        }
+    }
+
+    private void validateDenoiseStrength(Map<String, Object> parameters) {
+        Object value = parameters.get("strength");
+        if (!(value instanceof String strength)
+                || !("LIGHT".equals(strength) || "MEDIUM".equals(strength)
+                || "STRONG".equals(strength))) {
+            throw invalid("strength must be LIGHT, MEDIUM or STRONG");
         }
     }
 

@@ -75,10 +75,16 @@ public class AudioProcessingProperties {
         @DecimalMax("-20")
         private BigDecimal mediumNoiseFloorDb = BigDecimal.valueOf(-30);
 
-        @AssertTrue(message = "medium denoise must not be weaker than light denoise")
+        @DecimalMin("-80")
+        @DecimalMax("-20")
+        private BigDecimal strongNoiseFloorDb = BigDecimal.valueOf(-25);
+
+        @AssertTrue(message = "denoise noise floors must not get weaker as strength grows")
         public boolean isStrengthOrderValid() {
             return lightNoiseFloorDb != null && mediumNoiseFloorDb != null
-                    && lightNoiseFloorDb.compareTo(mediumNoiseFloorDb) <= 0;
+                    && strongNoiseFloorDb != null
+                    && lightNoiseFloorDb.compareTo(mediumNoiseFloorDb) <= 0
+                    && mediumNoiseFloorDb.compareTo(strongNoiseFloorDb) <= 0;
         }
     }
 

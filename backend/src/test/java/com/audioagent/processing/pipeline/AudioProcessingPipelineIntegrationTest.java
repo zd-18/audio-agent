@@ -59,6 +59,7 @@ class AudioProcessingPipelineIntegrationTest {
         pipeline = new AudioProcessingPipeline(
                 new SilenceTrimProcessor(commands,
                         new SilenceTrimPlanner()),
+                new DenoiseProcessor(commands, processing),
                 new LoudnessNormalizeProcessor(commands,
                         new LoudnormOutputParser(mapper), processing),
                 outputValidator,
@@ -101,6 +102,52 @@ class AudioProcessingPipelineIntegrationTest {
                 <= 100L, "actual duration="
                 + resultMetadata.getDurationMs());
         assertEquals(sourceHash, sha256(source));
+    }
+
+    @Test
+    void denoiseReducesNoiseKeepsDurationAndKeepsSourceUnchanged()
+            throws Exception {
+        Path source = tempDirectory.resolve("noisy-source.wav");
+        generateNoisyTone(source);
+        String sourceHash = sha256(source);
+
+        ProcessingOutput output = pipeline.execute(source, List.of(
+                step(1, ProcessingOperationType.DENOISE, null, null,
+                        Map.of("strength", "MEDIUM"))), tempDirectory);
+        AudioMetadata resultMetadata = metadataProbe.probe(output.path());
+
+        assertTrue(Files.isRegularFile(output.path()));
+        assertTrue(Files.size(output.path()) > 1024);
+        assertEquals(5_000L, output.expectedDurationMs());
+        assertTrue(Math.abs(resultMetadata.getDurationMs() - 5_000L)
+                <= 100L, "actual duration="
+                + resultMetadata.getDurationMs());
+        assertEquals(sourceHash, sha256(source));
+    }
+
+    @Test
+    void denoiseCombinedWithTrimAndNormalizeProducesValidResult()
+            throws Exception {
+        Path source = tempDirectory.resolve("noisy-trim-source.wav");
+        generateNoisyTone(source);
+
+        ProcessingOutput output = pipeline.execute(source, List.of(
+                step(1, ProcessingOperationType.TRIM_SEGMENT,
+                        500L, 1_500L, Map.of()),
+                step(2, ProcessingOperationType.DENOISE, null, null,
+                        Map.of("strength", "LIGHT")),
+                step(3, ProcessingOperationType.NORMALIZE_VOLUME,
+                        null, null, Map.of("targetLufs", -16,
+                                "truePeakLimitDbfs", -1))),
+                tempDirectory);
+        AudioMetadata resultMetadata = metadataProbe.probe(output.path());
+
+        assertEquals(4_000L, output.expectedDurationMs());
+        assertTrue(Math.abs(resultMetadata.getDurationMs() - 4_000L)
+                <= 100L, "actual duration="
+                + resultMetadata.getDurationMs());
+        outputValidator.validateMetadata(resultMetadata,
+                output.expectedDurationMs());
     }
 
     @Test
@@ -168,6 +215,15 @@ class AudioProcessingPipelineIntegrationTest {
             Long start, Long end, Map<String, Object> parameters) {
         return new ExecutableProcessingStep((long) order, order, operation,
                 start, end, parameters);
+    }
+
+    private void generateNoisyTone(Path output) throws Exception {
+        runFfmpeg("-f", "lavfi", "-i",
+                "sine=frequency=440:sample_rate=48000:duration=5",
+                "-f", "lavfi", "-i",
+                "anoisesrc=d=5:r=48000:a=0.4",
+                "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest",
+                "-c:a", "pcm_s16le", output.toString());
     }
 
     private void generateFiveSecondTone(Path output, double volume)

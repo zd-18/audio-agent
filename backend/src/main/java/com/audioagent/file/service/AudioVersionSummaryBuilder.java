@@ -30,6 +30,7 @@ public class AudioVersionSummaryBuilder {
         return switch (operationType) {
             case "NORMALIZE_VOLUME" -> "音量优化";
             case "TRIM_SEGMENT" -> "裁剪片段";
+            case "DENOISE" -> "智能降噪";
             default -> "音频优化";
         };
     }

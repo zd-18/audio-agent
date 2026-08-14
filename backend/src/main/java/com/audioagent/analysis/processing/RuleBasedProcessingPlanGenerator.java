@@ -46,6 +46,7 @@ public class RuleBasedProcessingPlanGenerator
                 candidates.add(trim);
             }
         }
+        addDenoiseStep(issues, candidates);
         addNormalizeStep(context.report(), candidates, preferences);
 
         List<ProcessingStepDraft> deduplicated = deduplicate(candidates);
@@ -94,6 +95,44 @@ public class RuleBasedProcessingPlanGenerator
         return build(ProcessingOperationType.TRIM_SEGMENT, issue.getId(),
                 issue.getStartMs(), issue.getEndMs(), priority,
                 Map.of("mode", REVIEW_BEFORE_APPLY));
+    }
+
+    private void addDenoiseStep(
+            List<AudioIssueSegment> issues,
+            List<ProcessingStepDraft> candidates) {
+        if (issues == null || issues.isEmpty()) {
+            return;
+        }
+        // Background noise usually spans the whole recording, so all
+        // NOISE_RISK findings aggregate into a single whole-audio step
+        // whose strength follows the most severe finding.
+        AudioIssueSegment worst = null;
+        String severity = null;
+        for (AudioIssueSegment issue : issues) {
+            if (issue == null || issue.getIssueType() == null
+                    || !"NOISE_RISK".equalsIgnoreCase(issue.getIssueType())
+                    || issue.getSeverity() == null) {
+                continue;
+            }
+            String candidate = issue.getSeverity();
+            if ("LOW".equalsIgnoreCase(candidate)) {
+                continue;
+            }
+            if (severity == null || "MEDIUM".equals(severity)
+                    && "HIGH".equals(candidate)) {
+                severity = candidate;
+                worst = issue;
+            }
+        }
+        if (worst == null) {
+            return;
+        }
+        boolean strong = "HIGH".equalsIgnoreCase(severity);
+        candidates.add(build(ProcessingOperationType.DENOISE, worst.getId(),
+                null, null,
+                strong ? ProcessingPriority.HIGH : ProcessingPriority.MEDIUM,
+                Map.of("strength",
+                        strong ? "STRONG" : "MEDIUM")));
     }
 
     private void addNormalizeStep(

@@ -10,6 +10,7 @@ import type {
 const OPERATION_LABELS: Record<ProcessingOperationType, string> = {
   NORMALIZE_VOLUME: '整段音量标准化',
   TRIM_SEGMENT: '裁剪指定片段',
+  DENOISE: '智能降噪',
   REVIEW_SILENCE: '检查静音片段',
   TRIM_SILENCE: '缩短较长静音',
   INCREASE_GAIN: '提升局部音量',
@@ -39,6 +40,7 @@ const RISK_LABELS: Record<ProcessingRiskLevel, string> = {
 
 const WHOLE_AUDIO_OPERATIONS = new Set<ProcessingOperationType>([
   'NORMALIZE_VOLUME',
+  'DENOISE',
   'NORMALIZE_LOUDNESS',
   'LIMIT_PEAK',
 ])
@@ -46,6 +48,7 @@ const WHOLE_AUDIO_OPERATIONS = new Set<ProcessingOperationType>([
 const EXECUTABLE_OPERATIONS = new Set<ProcessingOperationType>([
   'NORMALIZE_VOLUME',
   'TRIM_SEGMENT',
+  'DENOISE',
 ])
 
 export function isExecutableProcessingOperation(operation: ProcessingOperationType) {
@@ -146,6 +149,12 @@ export function getParameterDisplayItems(step: ProcessingStep): ParameterDisplay
     case 'TRIM_SEGMENT':
       items.push({ label: '处理方式', value: '移除所选 startMs / endMs 时间范围' })
       break
+    case 'DENOISE': {
+      const strength = strengthLabel(parameters.strength)
+      items.push({ label: '降噪强度', value: strength || '按检测结果处理' })
+      items.push({ label: '处理范围', value: '整段音频' })
+      break
+    }
     case 'REVIEW_SILENCE':
       items.push({ label: '处理方式', value: modeLabel(parameters.mode) })
       break
