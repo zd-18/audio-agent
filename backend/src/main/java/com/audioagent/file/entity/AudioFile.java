@@ -18,6 +18,14 @@ public class AudioFile {
 
     private Long sourceFileId;
 
+    private Long rootAudioFileId;
+
+    private Integer versionNo;
+
+    private String versionSummary;
+
+    private Long sourceExecutionId;
+
     private FileRole fileRole;
 
     private String originalName;

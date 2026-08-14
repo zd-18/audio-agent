@@ -3,6 +3,9 @@ spring:
     name: audio-agent-backend
   profiles:
     active: dev
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
 
 server:
   port: 8080
@@ -27,3 +30,17 @@ logging:
     com.audioagent.transcript.mapper: warn
     com.audioagent.contentanalysis.mapper: warn
     com.audioagent.agent.mapper: warn
+
+audio:
+  outbox:
+    enabled: true
+    batch-size: 50
+    max-retry-count: 5
+    scan-interval-ms: 1000
+    initial-retry-delay-ms: 2000
+    max-retry-delay-ms: 300000
+    confirm-timeout-ms: 10000
+    lock-timeout-ms: 60000
+    exchange: audio-agent.events
+    routing-key: outbox.event
+    queue: audio-agent.outbox.events

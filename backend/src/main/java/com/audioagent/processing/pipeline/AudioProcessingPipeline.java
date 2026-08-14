@@ -91,10 +91,8 @@ public class AudioProcessingPipeline {
 
     private void validateOperations(List<ExecutableProcessingStep> steps) {
         for (ExecutableProcessingStep step : steps) {
-            if (step == null || (step.operationType()
-                    != ProcessingOperationType.TRIM_SEGMENT
-                    && step.operationType()
-                    != ProcessingOperationType.NORMALIZE_VOLUME)) {
+            if (step == null || step.operationType() == null
+                    || !step.operationType().isExecutable()) {
                 throw new ProcessingExecutionException(
                         ErrorCode.PROCESSING_EXECUTION_UNSUPPORTED_OPERATION,
                         false, "Only NORMALIZE_VOLUME and TRIM_SEGMENT are supported");
@@ -147,4 +145,5 @@ public class AudioProcessingPipeline {
                     false, "Processing input or work directory is invalid");
         }
     }
+
 }

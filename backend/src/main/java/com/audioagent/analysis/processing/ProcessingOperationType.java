@@ -12,5 +12,9 @@ public enum ProcessingOperationType {
     DECREASE_GAIN,
     DENOISE_REVIEW,
     NORMALIZE_LOUDNESS,
-    LIMIT_PEAK
+    LIMIT_PEAK;
+
+    public boolean isExecutable() {
+        return this == NORMALIZE_VOLUME || this == TRIM_SEGMENT;
+    }
 }

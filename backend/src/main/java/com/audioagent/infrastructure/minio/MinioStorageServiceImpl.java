@@ -1,19 +1,27 @@
 package com.audioagent.infrastructure.minio;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import io.minio.ComposeObjectArgs;
+import io.minio.ComposeSource;
+import io.minio.CopyObjectArgs;
+import io.minio.CopySource;
 import io.minio.GetObjectArgs;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.RemoveObjectsArgs;
 import io.minio.StatObjectArgs;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
+import io.minio.messages.DeleteObject;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -143,6 +151,90 @@ public class MinioStorageServiceImpl implements MinioStorageService {
                 objectKey,
                 minioProperties.getPresignedUrlExpireSeconds()
         );
+    }
+
+    @Override
+    public void deleteAll(List<String> objectKeys) {
+        if (objectKeys == null || objectKeys.isEmpty()) {
+            return;
+        }
+        try {
+            var objects = objectKeys.stream().distinct()
+                    .map(DeleteObject::new)
+                    .toList();
+            var results = minioClient.removeObjects(
+                    RemoveObjectsArgs.builder()
+                            .bucket(minioProperties.getBucketName())
+                            .objects(objects)
+                            .build()
+            );
+            for (var result : results) {
+                result.get();
+            }
+        } catch (Exception e) {
+            log.error("Failed to delete MinIO objects in batch", e);
+            throw new BusinessException(
+                    ErrorCode.MINIO_DELETE_FAILED,
+                    "Failed to clean temporary upload objects"
+            );
+        }
+    }
+
+    @Override
+    public void compose(String objectKey, List<String> sourceObjectKeys,
+                        String contentType) {
+        if (sourceObjectKeys == null || sourceObjectKeys.isEmpty()) {
+            throw new BusinessException(
+                    ErrorCode.MINIO_UPLOAD_FAILED,
+                    "No chunks were provided for merge"
+            );
+        }
+        try {
+            List<ComposeSource> sources = sourceObjectKeys.stream()
+                    .map(source -> ComposeSource.builder()
+                            .bucket(minioProperties.getBucketName())
+                            .object(source)
+                            .build())
+                    .toList();
+            ComposeObjectArgs.Builder builder = ComposeObjectArgs.builder()
+                    .bucket(minioProperties.getBucketName())
+                    .object(objectKey)
+                    .sources(sources);
+            if (contentType != null && !contentType.isBlank()) {
+                builder.headers(Map.of("Content-Type", contentType));
+            }
+            minioClient.composeObject(builder.build());
+        } catch (Exception e) {
+            log.error("Failed to compose MinIO object, objectKey={}",
+                    objectKey, e);
+            throw new BusinessException(
+                    ErrorCode.MINIO_UPLOAD_FAILED,
+                    "Failed to merge upload chunks"
+            );
+        }
+    }
+
+    @Override
+    public void copy(String sourceObjectKey, String targetObjectKey) {
+        try {
+            minioClient.copyObject(
+                    CopyObjectArgs.builder()
+                            .bucket(minioProperties.getBucketName())
+                            .object(targetObjectKey)
+                            .source(CopySource.builder()
+                                    .bucket(minioProperties.getBucketName())
+                                    .object(sourceObjectKey)
+                                    .build())
+                            .build()
+            );
+        } catch (Exception e) {
+            log.error("Failed to copy MinIO object, source={}, target={}",
+                    sourceObjectKey, targetObjectKey, e);
+            throw new BusinessException(
+                    ErrorCode.MINIO_UPLOAD_FAILED,
+                    "Failed to publish merged upload"
+            );
+        }
     }
 
     @Override

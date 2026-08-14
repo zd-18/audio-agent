@@ -12,6 +12,7 @@ import com.audioagent.analysis.vo.TaskListVO;
 import com.audioagent.analysis.vo.TaskVO;
 import com.audioagent.common.api.PageResult;
 import com.audioagent.file.mapper.AudioFileMapper;
+import com.audioagent.file.entity.AudioFile;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -151,6 +152,38 @@ class AudioAnalysisTaskServiceImplTest {
         assertEquals("wav", detail.getResult().getFormatName());
         assertNull(detail.getResult().getLoudness());
         verifyNoInteractions(loudnessEvaluator);
+    }
+
+    @Test
+    void duplicateUploadedEventDoesNotCreateOrDispatchAnotherTask() {
+        AudioFile file = new AudioFile();
+        file.setId(11L);
+        file.setUserId(USER_ID);
+        file.setDeleted(0);
+        AudioAnalysisTask created = new AudioAnalysisTask();
+        created.setId(31L);
+        created.setAudioFileId(11L);
+        created.setSourceEventId(501L);
+        created.setAnalysisType(AnalysisType.FULL);
+        created.setStatus(AnalysisTaskStatus.PENDING);
+        when(taskMapper.selectBySourceEventId(501L))
+                .thenReturn(null, created);
+        when(audioFileMapper.selectById(11L)).thenReturn(file);
+        when(taskMapper.insert(any(AudioAnalysisTask.class)))
+                .thenAnswer(invocation -> {
+                    AudioAnalysisTask task = invocation.getArgument(0);
+                    task.setId(31L);
+                    return 1;
+                });
+
+        TaskVO first = service.createTaskFromUploadedFile(
+                11L, USER_ID, 501L);
+        TaskVO duplicate = service.createTaskFromUploadedFile(
+                11L, USER_ID, 501L);
+
+        assertEquals(first.getTaskId(), duplicate.getTaskId());
+        verify(taskMapper, times(1)).insert(any(AudioAnalysisTask.class));
+        verify(eventPublisher, times(1)).publishEvent(any());
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

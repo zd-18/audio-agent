@@ -36,6 +36,7 @@ class AudioProcessingPipelineIntegrationTest {
 
     private AudioProcessingPipeline pipeline;
     private FfprobeAudioMetadataProbe metadataProbe;
+    private ProcessingOutputValidator outputValidator;
 
     @BeforeEach
     void setUp() {
@@ -54,12 +55,13 @@ class AudioProcessingPipelineIntegrationTest {
         FfmpegCommandExecutor commands = new FfmpegCommandExecutor(
                 analysis, processing, processes);
         metadataProbe = new FfprobeAudioMetadataProbe(analysis, mapper);
+        outputValidator = new ProcessingOutputValidator(processing);
         pipeline = new AudioProcessingPipeline(
                 new SilenceTrimProcessor(commands,
                         new SilenceTrimPlanner()),
                 new LoudnessNormalizeProcessor(commands,
                         new LoudnormOutputParser(mapper), processing),
-                new ProcessingOutputValidator(processing),
+                outputValidator,
                 metadataProbe, commands);
     }
 
@@ -101,6 +103,66 @@ class AudioProcessingPipelineIntegrationTest {
         assertEquals(sourceHash, sha256(source));
     }
 
+    @Test
+    void probePrefersFirstAudioStreamDurationOverContainerDuration()
+            throws Exception {
+        Path source = tempDirectory.resolve("different-durations.mp4");
+        generateVideoWithShorterAudio(source);
+
+        AudioMetadata sourceMetadata = metadataProbe.probe(source);
+        Path materialized = tempDirectory.resolve("materialized.wav");
+        materializeAudio(source, materialized);
+        AudioMetadata materializedMetadata = metadataProbe.probe(materialized);
+
+        assertEquals(sourceMetadata.getStreamDurationMs(),
+                sourceMetadata.getDurationMs());
+        assertTrue(sourceMetadata.getFormatDurationMs()
+                - sourceMetadata.getStreamDurationMs() > 1_500L);
+        assertTrue(Math.abs(materializedMetadata.getDurationMs()
+                - sourceMetadata.getStreamDurationMs()) <= 250L,
+                "formatDurationMs=" + sourceMetadata.getFormatDurationMs()
+                        + ", streamDurationMs="
+                        + sourceMetadata.getStreamDurationMs()
+                        + ", materializedDurationMs="
+                        + materializedMetadata.getDurationMs());
+    }
+
+    @Test
+    void normalizeVolumeUsesAudioStreamDurationAsExpectedDuration()
+            throws Exception {
+        Path source = tempDirectory.resolve("normalize-video.mp4");
+        generateVideoWithShorterAudio(source);
+        AudioMetadata sourceMetadata = metadataProbe.probe(source);
+
+        ProcessingOutput output = pipeline.execute(source, List.of(
+                step(1, ProcessingOperationType.NORMALIZE_VOLUME,
+                        null, null, Map.of("targetLufs", -16,
+                                "truePeakLimitDbfs", -1))),
+                tempDirectory);
+        AudioMetadata resultMetadata = metadataProbe.probe(output.path());
+
+        assertEquals(sourceMetadata.getStreamDurationMs(),
+                output.expectedDurationMs());
+        outputValidator.validateMetadata(resultMetadata,
+                output.expectedDurationMs());
+    }
+
+    @Test
+    void trimSegmentCalculatesExpectedDurationFromAudioStream()
+            throws Exception {
+        Path source = tempDirectory.resolve("trim-video.mp4");
+        generateVideoWithShorterAudio(source);
+
+        ProcessingOutput output = pipeline.execute(source, List.of(
+                step(1, ProcessingOperationType.TRIM_SEGMENT,
+                        500L, 1_500L, Map.of())), tempDirectory);
+        AudioMetadata resultMetadata = metadataProbe.probe(output.path());
+
+        assertEquals(2_000L, output.expectedDurationMs());
+        outputValidator.validateMetadata(resultMetadata,
+                output.expectedDurationMs());
+    }
+
     private ExecutableProcessingStep step(
             int order, ProcessingOperationType operation,
             Long start, Long end, Map<String, Object> parameters) {
@@ -115,6 +177,36 @@ class AudioProcessingPipelineIntegrationTest {
                 "-i", "sine=frequency=440:sample_rate=48000:duration=5",
                 "-af", "volume=" + volume, "-c:a", "pcm_s16le",
                 output.toString()).redirectErrorStream(true).start();
+        String details = new String(process.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        assertEquals(0, process.waitFor(), details);
+    }
+
+    private void generateVideoWithShorterAudio(Path output)
+            throws Exception {
+        runFfmpeg("-f", "lavfi", "-i",
+                "color=c=black:s=16x16:r=25:d=5", "-f", "lavfi", "-i",
+                "sine=frequency=440:sample_rate=44100:duration=3",
+                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "mpeg4",
+                "-c:a", "aac", output.toString());
+    }
+
+    private void materializeAudio(Path input, Path output)
+            throws Exception {
+        runFfmpeg("-i", input.toString(), "-map", "0:a:0", "-vn",
+                "-af", "anull", "-c:a", "pcm_s16le", output.toString());
+    }
+
+    private void runFfmpeg(String... arguments) throws Exception {
+        List<String> command = new java.util.ArrayList<>();
+        command.add(FFMPEG.toString());
+        command.add("-y");
+        command.add("-hide_banner");
+        command.add("-loglevel");
+        command.add("error");
+        command.addAll(List.of(arguments));
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true).start();
         String details = new String(process.getInputStream().readAllBytes(),
                 java.nio.charset.StandardCharsets.UTF_8);
         assertEquals(0, process.waitFor(), details);

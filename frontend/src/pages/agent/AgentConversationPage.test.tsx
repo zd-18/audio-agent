@@ -5,8 +5,11 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createAgentConversation,
+  confirmAgentProcessingWorkflow,
   getAgentConversations,
   getAgentMessages,
+  getAgentProcessingWorkflow,
+  getAgentProcessingWorkflows,
   sendAgentMessage,
 } from '../../api/agent'
 import { ApiError } from '../../api/http'
@@ -25,8 +28,11 @@ import AgentConversationPage from './AgentConversationPage'
 
 vi.mock('../../api/agent', () => ({
   createAgentConversation: vi.fn(),
+  confirmAgentProcessingWorkflow: vi.fn(),
   getAgentConversations: vi.fn(),
   getAgentMessages: vi.fn(),
+  getAgentProcessingWorkflow: vi.fn(),
+  getAgentProcessingWorkflows: vi.fn(),
   sendAgentMessage: vi.fn(),
 }))
 vi.mock('../../api/audioFiles', () => ({ downloadAudioFile: vi.fn() }))
@@ -162,6 +168,9 @@ const getConversationsMock = vi.mocked(getAgentConversations)
 const getMessagesMock = vi.mocked(getAgentMessages)
 const createConversationMock = vi.mocked(createAgentConversation)
 const sendMessageMock = vi.mocked(sendAgentMessage)
+const getWorkflowsMock = vi.mocked(getAgentProcessingWorkflows)
+const getWorkflowMock = vi.mocked(getAgentProcessingWorkflow)
+const confirmWorkflowMock = vi.mocked(confirmAgentProcessingWorkflow)
 
 function player(): AudioPlaybackController {
   return {
@@ -245,6 +254,9 @@ describe('AgentConversationPage', () => {
     })
     createConversationMock.mockReset().mockResolvedValue(conversation())
     sendMessageMock.mockReset().mockResolvedValue(pair())
+    getWorkflowsMock.mockReset().mockResolvedValue([])
+    getWorkflowMock.mockReset()
+    confirmWorkflowMock.mockReset()
     vi.mocked(useTranscriptionTaskPolling).mockReturnValue({
       task,
       loading: false,
@@ -290,7 +302,7 @@ describe('AgentConversationPage', () => {
     ))
     await waitFor(() => expect(sendMessageMock).toHaveBeenCalledWith(
       conversationId,
-      { content: '新的问题', clientRequestId },
+      { content: '新的问题', clientRequestId, mode: 'CHAT' },
       expect.any(AbortSignal),
     ))
     expect(typeof createConversationMock.mock.calls[0][0].transcriptId).toBe('string')

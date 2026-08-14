@@ -17,6 +17,8 @@ import com.audioagent.analysis.vo.TaskVO;
 import com.audioagent.analysis.vo.TaskListVO;
 import com.audioagent.common.api.ApiResponse;
 import com.audioagent.common.api.PageResult;
+import com.audioagent.file.service.AudioVersionService;
+import com.audioagent.file.vo.AudioVersionChainVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -34,6 +36,7 @@ public class AudioAnalysisTaskController {
             audioProcessingConfirmationService;
     private final CurrentUserProvider currentUserProvider;
     private final AudioResourceOwnershipService ownershipService;
+    private final AudioVersionService audioVersionService;
 
     @GetMapping("/tasks")
     public ApiResponse<PageResult<TaskListVO>> listTasks(
@@ -68,6 +71,15 @@ public class AudioAnalysisTaskController {
         ownershipService.requireTaskOwned(userId, taskId);
         TaskVO result = audioAnalysisTaskService.getTaskDetail(taskId);
         return ApiResponse.success(result);
+    }
+
+    @GetMapping("/tasks/{taskId}/audio-versions")
+    public ApiResponse<AudioVersionChainVO> getAudioVersions(
+            @PathVariable("taskId") Long taskId
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(
+                audioVersionService.getByTask(userId, taskId));
     }
 
     @PostMapping("/tasks/{taskId}/retry")

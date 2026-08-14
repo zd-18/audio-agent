@@ -40,6 +40,13 @@ public enum ErrorCode {
     AUDIO_FILE_ACCESS_DENIED(40005, "无权访问该文件"),
     AUDIO_FILE_NOT_AVAILABLE(40006, "文件当前不可用"),
     PLAYBACK_URL_GENERATION_FAILED(40007, "播放地址生成失败"),
+    MULTIPART_UPLOAD_NOT_FOUND(40008, "上传任务不存在或已过期"),
+    MULTIPART_UPLOAD_ACCESS_DENIED(40009, "无权访问该上传任务"),
+    MULTIPART_UPLOAD_STATE_INVALID(40010, "上传任务状态不允许当前操作"),
+    MULTIPART_CHUNK_INVALID(40011, "上传分片参数不正确"),
+    MULTIPART_CHUNKS_INCOMPLETE(40012, "上传分片尚未完整"),
+    MULTIPART_HASH_MISMATCH(40013, "文件 SHA-256 校验失败"),
+    MULTIPART_UPLOAD_BUSY(40014, "上传任务正在合并"),
 
     // 任务相关 40101-40199
     AUDIO_TASK_NOT_FOUND(40101, "任务不存在"),
@@ -124,6 +131,11 @@ public enum ErrorCode {
     AGENT_AI_TIMEOUT(40910, "Agent service response timed out"),
     AGENT_RESPONSE_INVALID(40911, "Agent response format is invalid"),
     AGENT_CITATION_INVALID(40912, "Agent citation is invalid"),
+    AGENT_WORKFLOW_NOT_FOUND(40913, "Agent processing workflow not found"),
+    AGENT_WORKFLOW_STATUS_INVALID(40914, "Agent processing workflow status is invalid"),
+    AGENT_PROCESSING_CONTEXT_UNAVAILABLE(40915, "Audio processing context is unavailable"),
+    AGENT_PLAN_INVALID(40916, "Agent processing plan is invalid"),
+    AGENT_PLAN_FAILED(40917, "Agent processing plan could not be generated"),
 
    // MinIO相关 40401-40499
 MINIO_UPLOAD_FAILED(40401, "MinIO上传失败"),

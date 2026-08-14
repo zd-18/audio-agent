@@ -132,6 +132,32 @@ class ProcessingParameterValidatorTest {
     }
 
     @Test
+    void acceptsPeakLimitWithEmptyOverrides() {
+        Map<String, Object> result = validator.mergeAndValidate(
+                step("LIMIT_PEAK", null, null),
+                Map.of("truePeakLimitDbfs", -1.0),
+                Map.of());
+
+        assertEquals(-1.0, result.get("truePeakLimitDbfs"));
+    }
+
+    @Test
+    void keepsNormalizeVolumeAndTrimSegmentValidation() {
+        Map<String, Object> normalized = validator.mergeAndValidate(
+                step("NORMALIZE_VOLUME", null, null),
+                Map.of("targetLufs", -16.0,
+                        "truePeakLimitDbfs", -1.0),
+                Map.of());
+        Map<String, Object> trimmed = validator.mergeAndValidate(
+                step("TRIM_SEGMENT", 1000L, 2000L),
+                Map.of(), Map.of());
+
+        assertEquals(-16.0, normalized.get("targetLufs"));
+        assertEquals(-1.0, normalized.get("truePeakLimitDbfs"));
+        assertEquals(Map.of(), trimmed);
+    }
+
+    @Test
     void reviewSilenceHasNoEditableParameters() {
         assertParameterInvalid(() -> validator.mergeAndValidate(
                 step("REVIEW_SILENCE", 0L, 1000L),
@@ -162,4 +188,3 @@ class ProcessingParameterValidatorTest {
                 exception.getCode());
     }
 }
-

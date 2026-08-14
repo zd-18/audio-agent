@@ -29,6 +29,10 @@ public class AudioFileVO {
 
     private String fileStatus;
 
+    private Integer versionNo;
+
+    private String versionSummary;
+
     private Long durationMs;
 
     private LocalDateTime createdAt;
@@ -51,6 +55,8 @@ public class AudioFileVO {
                                 ? null
                                 : audioFile.getFileStatus().name()
                 )
+                .versionNo(audioFile.getVersionNo())
+                .versionSummary(audioFile.getVersionSummary())
                 .durationMs(audioFile.getDurationMs())
                 .createdAt(audioFile.getCreatedAt())
                 .build();

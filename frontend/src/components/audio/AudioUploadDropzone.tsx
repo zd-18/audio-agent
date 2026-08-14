@@ -37,10 +37,9 @@ export default function AudioUploadDropzone({ disabled, onSelect }: AudioUploadD
           <span className="audio-upload-wave"><i /><i /><i /><i /><i /><i /><i /></span>
         </span>
         <strong>{dragging ? '释放文件以完成选择' : '拖拽音频到这里，或点击选择文件'}</strong>
-        <span>支持 MP3、WAV、M4A、MP4，单文件最大 500MB</span>
-        <small><SoundOutlined /> 暂不支持分片与断点续传</small>
+        <span>支持 MP3、WAV、M4A、MP4，单文件最大 20GB</span>
+        <small><SoundOutlined /> 支持暂停与断点续传，刷新后重新选择同一文件即可继续</small>
       </button>
     </div>
   )
 }
-

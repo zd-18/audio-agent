@@ -76,6 +76,32 @@ class RuleBasedProcessingPlanGeneratorTest {
     }
 
     @Test
+    void peakRiskUsesNormalizeVolumeInsteadOfLegacyLimitPeak() {
+        ProcessingPlanDraft plan = generate(List.of(),
+                loudnessReport("NORMAL", "RISK"), 8_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        assertEquals(1, plan.steps().size());
+        ProcessingStepDraft normalize = plan.steps().getFirst();
+        assertEquals(ProcessingOperationType.NORMALIZE_VOLUME,
+                normalize.operationType());
+        assertEquals(new BigDecimal("-1"),
+                normalize.parameters().get("truePeakLimitDbfs"));
+    }
+
+    @Test
+    void everyGeneratedStepIsExecutableInCurrentStage() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "SILENCE", "HIGH", 1_000, 3_000),
+                        issue(2, "VOLUME_SPIKE", "HIGH", 3_000, 4_000)),
+                loudnessReport("NORMAL", "RISK"), 8_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        assertTrue(plan.steps().stream().allMatch(step ->
+                step.operationType().isExecutable()));
+    }
+
+    @Test
     void estimatedDurationMergesOverlappingTrimRanges() {
         ProcessingPlanDraft plan = generate(List.of(
                         issue(1, "SILENCE", "HIGH", 1_000, 5_000),
@@ -122,14 +148,19 @@ class RuleBasedProcessingPlanGeneratorTest {
     private UserProcessingPreferences preferences(
             ProcessingStrategy strategy) {
         return new UserProcessingPreferences(DenoiseStrength.LIGHT,
-                strategy, false, true);
+                strategy, true, true);
     }
 
     private AudioAnalysisReportVO loudnessReport(String level) {
+        return loudnessReport(level, "SAFE");
+    }
+
+    private AudioAnalysisReportVO loudnessReport(String level,
+                                                  String peakRisk) {
         return AudioAnalysisReportVO.builder()
                 .loudnessOverview(AudioAnalysisReportVO.LoudnessOverview
                         .builder().loudnessLevel(level)
-                        .peakRisk("SAFE").build())
+                        .peakRisk(peakRisk).build())
                 .build();
     }
 

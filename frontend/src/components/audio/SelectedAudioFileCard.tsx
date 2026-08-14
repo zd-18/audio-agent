@@ -8,7 +8,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`
 }
 
-export default function SelectedAudioFileCard({ file, disabled, onRemove, onReselect }: { file: File; disabled?: boolean; onRemove: () => void; onReselect: () => void }) {
+export default function SelectedAudioFileCard({ file, disabled, statusText = '等待上传', onRemove, onReselect }: { file: File; disabled?: boolean; statusText?: string; onRemove: () => void; onReselect: () => void }) {
   const extension = file.name.split('.').pop()?.toUpperCase() || 'AUDIO'
   return (
     <section className="audio-upload-file-card" aria-labelledby="selected-audio-title">
@@ -16,7 +16,7 @@ export default function SelectedAudioFileCard({ file, disabled, onRemove, onRese
       <div className="audio-upload-file-card__body">
         <span id="selected-audio-title">已选择文件</span>
         <strong title={file.name}>{file.name}</strong>
-        <div><span>{formatBytes(file.size)}</span><span>{extension}</span><span>{file.type || '未知 MIME 类型'}</span><span className="audio-upload-file-card__ready">等待上传</span></div>
+        <div><span>{formatBytes(file.size)}</span><span>{extension}</span><span>{file.type || '未知 MIME 类型'}</span><span className="audio-upload-file-card__ready">{statusText}</span></div>
       </div>
       <div className="audio-upload-file-card__actions">
         <Button icon={<SwapOutlined />} onClick={onReselect} disabled={disabled}>重新选择</Button>
@@ -25,4 +25,3 @@ export default function SelectedAudioFileCard({ file, disabled, onRemove, onRese
     </section>
   )
 }
-

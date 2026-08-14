@@ -3,6 +3,7 @@ package com.audioagent.processing.executor;
 import com.audioagent.analysis.probe.AudioMetadataProbe;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.file.mapper.AudioFileMapper;
+import com.audioagent.file.service.AudioVersionSummaryBuilder;
 import com.audioagent.infrastructure.minio.MinioProperties;
 import com.audioagent.infrastructure.minio.MinioStorageService;
 import com.audioagent.processing.entity.AudioProcessingExecution;
@@ -12,6 +13,7 @@ import com.audioagent.processing.mapper.AudioProcessingExecutionMapper;
 import com.audioagent.processing.mapper.AudioProcessingExecutionStepMapper;
 import com.audioagent.processing.pipeline.AudioProcessingPipeline;
 import com.audioagent.processing.pipeline.ProcessingOutputValidator;
+import com.audioagent.processing.critic.ProcessingResultCritic;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,10 +46,12 @@ class AudioProcessingExecutionExecutorTest {
         pipeline = mock(AudioProcessingPipeline.class);
         workDirectories = mock(ProcessingExecutionWorkDirectory.class);
         executor = new AudioProcessingExecutionExecutor(executionMapper,
-                stepMapper, fileMapper, mock(MinioStorageService.class),
+                stepMapper, fileMapper, new AudioVersionSummaryBuilder(),
+                mock(MinioStorageService.class),
                 new MinioProperties(), pipeline,
                 mock(AudioMetadataProbe.class),
-                mock(ProcessingOutputValidator.class), workDirectories,
+                mock(ProcessingOutputValidator.class),
+                mock(ProcessingResultCritic.class), workDirectories,
                 new ProcessingExecutionErrorClassifier(),
                 new ObjectMapper(), mock(TransactionTemplate.class));
     }

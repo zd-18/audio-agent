@@ -17,6 +17,9 @@ public interface AudioAnalysisTaskService {
      */
     TaskVO createTask(CreateTaskRequest request);
 
+    TaskVO createTaskFromUploadedFile(Long audioFileId, Long userId,
+                                      Long sourceEventId);
+
     /**
      * 查询任务详情。
      */

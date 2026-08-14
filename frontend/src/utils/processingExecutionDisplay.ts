@@ -23,13 +23,13 @@ export const EXECUTION_STATUS_META: Record<
 }
 
 export const STAGE_LABELS: Record<ProcessingExecutionStage, string> = {
-  PREPARING: '正在准备音频',
-  LOCAL_PROCESSING: '正在处理局部音量和噪声',
-  TRIMMING: '正在整理静音片段',
-  LOUDNESS_NORMALIZING: '正在统一整体响度',
-  PEAK_LIMITING: '正在控制音频峰值',
-  UPLOADING: '正在保存处理结果',
-  METADATA_EXTRACTING: '正在读取结果信息',
+  PREPARING: '正在处理音频',
+  LOCAL_PROCESSING: '正在处理音频',
+  TRIMMING: '正在处理音频',
+  LOUDNESS_NORMALIZING: '正在处理音频',
+  PEAK_LIMITING: '正在处理音频',
+  UPLOADING: '正在生成结果',
+  METADATA_EXTRACTING: '正在生成结果',
   COMPLETED: '处理已完成',
 }
 
@@ -66,7 +66,7 @@ const BUSINESS_ERROR_MESSAGES: Record<number, string> = {
   40224: '该确认方案已经存在处理任务。',
   40225: '当前任务状态不允许重新处理，请先刷新页面。',
   40226: '未找到原始音频文件。',
-  40227: '确认方案中包含暂不支持的处理操作。',
+  40227: '当前确认基于旧版处理能力，请重新生成并确认处理方案。',
   40228: '处理参数无效，请重新生成处理方案。',
   40229: '音频处理未能完成。',
   40230: '生成的音频结果不可用。',
@@ -76,7 +76,7 @@ const BUSINESS_ERROR_MESSAGES: Record<number, string> = {
 
 const FAILURE_MESSAGES: Record<string, string> = {
   PROCESSING_EXECUTION_SOURCE_FILE_NOT_FOUND: '未找到原始音频文件。',
-  PROCESSING_EXECUTION_UNSUPPORTED_OPERATION: '确认方案中包含暂不支持的处理操作。',
+  PROCESSING_EXECUTION_UNSUPPORTED_OPERATION: '当前确认基于旧版处理能力，请重新生成并确认处理方案。',
   PROCESSING_EXECUTION_INVALID_PARAMETER: '处理参数无效，请重新生成处理方案。',
   PROCESSING_EXECUTION_FFMPEG_FAILED: '音频处理未能完成。',
   PROCESSING_EXECUTION_OUTPUT_INVALID: '生成的音频结果不可用。',

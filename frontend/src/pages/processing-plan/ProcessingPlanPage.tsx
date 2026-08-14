@@ -545,7 +545,10 @@ export default function ProcessingPlanPage() {
             />
           )}
           {confirmationState.confirmation?.confirmationStatus === 'CONFIRMED' && (
-            <ProcessingExecutionEntry confirmation={confirmationState.confirmation} />
+            <ProcessingExecutionEntry
+              confirmation={confirmationState.confirmation}
+              onRegenerate={() => requestGeneration(true)}
+            />
           )}
         </div>
       )}

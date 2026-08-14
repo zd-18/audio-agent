@@ -56,6 +56,7 @@ public class ProcessingParameterValidator {
                     "targetLufs", "truePeakLimitDbfs");
             case LIMIT_PEAK -> Set.of("truePeakLimitDbfs");
             case REVIEW_SILENCE -> Set.of();
+            default -> throw unsupported(operation);
         };
     }
 
@@ -77,6 +78,7 @@ public class ProcessingParameterValidator {
             case REVIEW_SILENCE -> {
                 // This operation intentionally has no editable parameters.
             }
+            default -> throw unsupported(operation);
         }
     }
 
@@ -170,5 +172,10 @@ public class ProcessingParameterValidator {
     private BusinessException invalid(String message) {
         return new BusinessException(ErrorCode.PROCESSING_PARAMETER_INVALID,
                 message);
+    }
+
+    private BusinessException unsupported(
+            ProcessingOperationType operation) {
+        return invalid("Unsupported processing operation: " + operation);
     }
 }

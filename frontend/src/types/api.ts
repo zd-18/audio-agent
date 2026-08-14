@@ -16,8 +16,47 @@ export interface AudioFileRecord {
   sha256?: string
   fileRole?: string
   fileStatus?: string
+  versionNo?: number
+  versionSummary?: string
   durationMs?: number
   createdAt?: string
+}
+
+export type MultipartUploadStatus = 'INIT' | 'UPLOADING' | 'MERGING' | 'COMPLETED' | 'FAILED'
+
+export interface MultipartUploadInitResult {
+  uploadId?: string
+  status: MultipartUploadStatus
+  instantUpload: boolean
+  chunkSize: number
+  totalChunks: number
+  uploadedChunks: number[]
+  audioFile?: AudioFileRecord
+}
+
+export interface MultipartUploadProgress {
+  uploadId: string
+  status: MultipartUploadStatus
+  sizeBytes: number
+  chunkSize: number
+  totalChunks: number
+  uploadedCount: number
+  uploadedChunks: number[]
+}
+
+export interface MultipartChunkResult {
+  uploadId: string
+  status: MultipartUploadStatus
+  chunkIndex: number
+  uploadedCount: number
+  totalChunks: number
+}
+
+export interface MultipartUploadCompleteResult {
+  uploadId: string
+  status: 'COMPLETED'
+  instantUpload: boolean
+  audioFile: AudioFileRecord
 }
 
 export interface AudioFileListItem {

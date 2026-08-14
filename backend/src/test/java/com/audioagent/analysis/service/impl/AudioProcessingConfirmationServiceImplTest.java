@@ -191,6 +191,30 @@ class AudioProcessingConfirmationServiceImplTest {
     }
 
     @Test
+    void acceptedPeakLimitWithEmptyOverridesIsSaved() {
+        AudioProcessingStepConfirmation decision = stubEditableStep(
+                "PENDING", "LIMIT_PEAK", true,
+                "{\"truePeakLimitDbfs\":-1.0}");
+        when(stepConfirmationMapper.selectByConfirmationId(60L))
+                .thenReturn(List.of(decision));
+        when(stepConfirmationMapper.updateById(
+                any(AudioProcessingStepConfirmation.class))).thenReturn(1);
+        when(confirmationMapper.updateCounts(anyLong(), anyInt(), anyInt(),
+                anyInt(), any())).thenReturn(1);
+
+        ProcessingConfirmationVO.Step result = service.updateStep(
+                7L, 60L, 70L,
+                request("ACCEPTED", true, Map.of()));
+
+        assertEquals("ACCEPTED", result.getDecision());
+        assertTrue(result.getUserConfirmed());
+        assertEquals(-1.0, result.getEffectiveParameters()
+                .get("truePeakLimitDbfs"));
+        verify(confirmationMapper).updateCounts(
+                60L, 1, 0, 0, decision.getUpdatedAt());
+    }
+
+    @Test
     void rejectedStepUpdateSucceedsAndRecounts() {
         AudioProcessingStepConfirmation decision = stubEditableStep(
                 "PENDING", "REVIEW_SILENCE", true,
@@ -260,11 +284,24 @@ class AudioProcessingConfirmationServiceImplTest {
     void acceptedRiskStepRequiresExplicitUserConfirmation() {
         stubFinalConfirmation("DRAFT",
                 List.of(decision("ACCEPTED", false)),
-                List.of(source(41L, 1, "DENOISE_REVIEW", true,
-                        "{\"suggestedStrength\":\"LIGHT\"}")));
+                List.of(source(41L, 1, "TRIM_SEGMENT", true,
+                        "{}")));
 
         assertCode(ErrorCode.PROCESSING_STEP_CONFIRMATION_REQUIRED,
                 () -> service.confirm(7L, 60L));
+    }
+
+    @Test
+    void acceptedLegacyOperationRequiresRegeneratedPlan() {
+        stubFinalConfirmation("DRAFT",
+                List.of(decision("ACCEPTED", true)),
+                List.of(source(41L, 1, "LIMIT_PEAK", true,
+                        "{\"truePeakLimitDbfs\":-1.0}")));
+
+        assertCode(ErrorCode.PROCESSING_CONFIRMATION_STALE,
+                () -> service.confirm(7L, 60L));
+        verify(confirmationMapper, never()).confirmDraft(
+                anyLong(), anyString(), any());
     }
 
     @Test

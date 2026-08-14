@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Mapper
 public interface AudioContentAnalysisTaskMapper
@@ -52,6 +53,30 @@ public interface AudioContentAnalysisTaskMapper
             @Param("analysisTypes") String analysisTypes,
             @Param("summaryStyle") String summaryStyle,
             @Param("cutoff") LocalDateTime cutoff);
+
+    @Select("""
+            <script>
+            SELECT ranked.*
+            FROM (
+                SELECT t.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY t.transcript_id
+                           ORDER BY t.created_at DESC, t.id DESC
+                       ) AS row_number_value
+                FROM audio_content_analysis_task t
+                WHERE t.user_id = #{userId}
+                  AND t.transcript_id IN
+                  <foreach collection="transcriptIds" item="transcriptId"
+                           open="(" separator="," close=")">
+                    #{transcriptId}
+                  </foreach>
+            ) ranked
+            WHERE ranked.row_number_value = 1
+            </script>
+            """)
+    List<AudioContentAnalysisTask> selectLatestForTranscripts(
+            @Param("userId") Long userId,
+            @Param("transcriptIds") List<Long> transcriptIds);
 
     @Update("""
             UPDATE audio_content_analysis_task

@@ -50,12 +50,8 @@ export default function ExecutionFailure({
         <h2 id="processing-execution-failure-title">处理未能完成</h2>
         <p>{getExecutionFailureMessage(execution.failureCode)}</p>
         <dl>
-          <div><dt>失败阶段</dt><dd>{execution.currentStage ? getStageLabel(execution.currentStage) : '未提供阶段信息'}</dd></div>
+          <div><dt>失败阶段</dt><dd>{execution.currentStage ? getStageLabel(execution.currentStage) : '音频处理'}</dd></div>
           <div><dt>当前进度</dt><dd>{getExecutionProgress(execution.executionStatus, execution.progressPercent)}%</dd></div>
-          <div><dt>重试次数</dt><dd>{execution.retryCount}</dd></div>
-          {execution.failureMessage && (
-            <div><dt>失败详情</dt><dd>{execution.failureMessage}</dd></div>
-          )}
         </dl>
       </div>
       {retryable && (

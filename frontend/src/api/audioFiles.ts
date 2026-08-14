@@ -7,12 +7,107 @@ import {
   setXmlHttpRequestAuthHeader,
   unwrapApiResponse,
 } from './http'
-import type { AudioFileListItem, AudioFileRecord, PageResult } from '../types/api'
+import type {
+  AudioFileListItem,
+  AudioFileRecord,
+  MultipartChunkResult,
+  MultipartUploadCompleteResult,
+  MultipartUploadInitResult,
+  MultipartUploadProgress,
+  PageResult,
+} from '../types/api'
 import type { AudioPlaybackUrlResponse } from '../types/audioFile'
 
 interface UploadAudioOptions {
   signal?: AbortSignal
   onProgress?: (percent: number) => void
+}
+
+export interface MultipartUploadInitRequest {
+  originalName: string
+  mimeType: string
+  sizeBytes: number
+  sha256: string
+  chunkSize: number
+  totalChunks: number
+}
+
+export function initializeMultipartUpload(
+  request: MultipartUploadInitRequest,
+  signal?: AbortSignal,
+) {
+  return apiRequest<MultipartUploadInitResult>('/api/v1/files/multipart/init', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    signal,
+  })
+}
+
+export function getMultipartUploadProgress(uploadId: string, signal?: AbortSignal) {
+  return apiRequest<MultipartUploadProgress>(
+    `/api/v1/files/multipart/${encodeURIComponent(uploadId)}`,
+    { signal },
+  )
+}
+
+export function completeMultipartUpload(uploadId: string, signal?: AbortSignal) {
+  return apiRequest<MultipartUploadCompleteResult>(
+    `/api/v1/files/multipart/${encodeURIComponent(uploadId)}/complete`,
+    { method: 'POST', signal },
+  )
+}
+
+export function uploadMultipartChunk(
+  uploadId: string,
+  chunkIndex: number,
+  chunk: Blob,
+  signal?: AbortSignal,
+) {
+  return new Promise<MultipartChunkResult>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    const formData = new FormData()
+    formData.append('chunk', chunk, `chunk-${chunkIndex}`)
+    const abort = () => request.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+
+    const path = `/api/v1/files/multipart/${encodeURIComponent(uploadId)}`
+      + `/chunks/${chunkIndex}?chunkSize=${chunk.size}`
+    request.open('PUT', path)
+    setXmlHttpRequestAuthHeader(request)
+
+    request.addEventListener('load', () => {
+      signal?.removeEventListener('abort', abort)
+      handleUnauthorizedStatus(request.status)
+      try {
+        const response = parseApiResponse<MultipartChunkResult>(request.responseText)
+        if (request.status < 200 || request.status >= 300) {
+          reject(new ApiError(
+            response.message || `分片上传失败（${request.status}）`,
+            response.code,
+            response.requestId,
+            request.status,
+          ))
+          return
+        }
+        resolve(unwrapApiResponse(response))
+      } catch (error) {
+        reject(error instanceof ApiError ? error : new ApiError('服务端返回了无法识别的响应'))
+      }
+    })
+
+    request.addEventListener('error', () => {
+      signal?.removeEventListener('abort', abort)
+      reject(new ApiError('分片上传网络连接失败，请重试'))
+    })
+
+    request.addEventListener('abort', () => {
+      signal?.removeEventListener('abort', abort)
+      reject(new DOMException('上传已暂停', 'AbortError'))
+    })
+
+    request.send(formData)
+  })
 }
 
 export function uploadAudioFile(file: File, options: UploadAudioOptions = {}) {

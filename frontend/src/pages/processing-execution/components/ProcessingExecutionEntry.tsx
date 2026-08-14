@@ -1,6 +1,7 @@
 import {
   ArrowRightOutlined,
   CheckCircleOutlined,
+  ReloadOutlined,
   RocketOutlined,
 } from '@ant-design/icons'
 import { Alert, Button, Modal, Skeleton } from 'antd'
@@ -14,13 +15,18 @@ import {
   getProcessingExecutionErrorMessage,
   PROCESSING_EXECUTION_ALREADY_EXISTS_CODE,
 } from '../../../utils/processingExecutionDisplay'
+import { isExecutableProcessingOperation } from '../../../utils/processingPlanDisplay'
 import '../processing-execution.css'
 
 interface ProcessingExecutionEntryProps {
   confirmation: ProcessingConfirmation
+  onRegenerate?: () => void
 }
 
-export default function ProcessingExecutionEntry({ confirmation }: ProcessingExecutionEntryProps) {
+export default function ProcessingExecutionEntry({
+  confirmation,
+  onRegenerate,
+}: ProcessingExecutionEntryProps) {
   const navigate = useNavigate()
   const [modal, modalContext] = Modal.useModal()
   const [creating, setCreating] = useState(false)
@@ -35,6 +41,10 @@ export default function ProcessingExecutionEntry({ confirmation }: ProcessingExe
     notFoundIsEmpty: true,
   })
   const executionPath = `/analysis/tasks/${encodeURIComponent(confirmation.taskId)}/processing-execution`
+  const unsupportedAcceptedSteps = confirmation.steps.filter(
+    (step) => step.decision === 'ACCEPTED'
+      && !isExecutableProcessingOperation(step.operationType),
+  )
 
   useEffect(() => {
     mountedRef.current = true
@@ -45,6 +55,33 @@ export default function ProcessingExecutionEntry({ confirmation }: ProcessingExe
   }, [])
 
   if (confirmation.confirmationStatus !== 'CONFIRMED') return null
+
+  if (unsupportedAcceptedSteps.length > 0) {
+    return (
+      <section className="processing-execution-entry is-empty">
+        <ReloadOutlined aria-hidden="true" />
+        <div>
+          <span>PLAN UPDATE REQUIRED</span>
+          <h2>当前确认基于旧版处理方案</h2>
+          <p>
+            已接受的步骤包含当前执行器不支持的操作（
+            {unsupportedAcceptedSteps.map((step) => step.title || step.operationType).join('、')}
+            ）。请重新生成并确认方案；系统不会静默转换历史决定。
+          </p>
+        </div>
+        {onRegenerate && (
+          <Button
+            type="primary"
+            aria-label="重新生成处理方案"
+            icon={<ReloadOutlined />}
+            onClick={onRegenerate}
+          >
+            重新生成处理方案
+          </Button>
+        )}
+      </section>
+    )
+  }
 
   if (confirmation.acceptedStepCount === 0) {
     return (

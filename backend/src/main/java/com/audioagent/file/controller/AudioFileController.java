@@ -5,10 +5,18 @@ import com.audioagent.common.api.ApiResponse;
 import java.io.IOException;
 import com.audioagent.common.api.PageResult;
 import com.audioagent.file.entity.AudioFile;
+import com.audioagent.file.multipart.MultipartUploadService;
+import com.audioagent.file.multipart.dto.MultipartUploadInitRequest;
+import com.audioagent.file.multipart.vo.MultipartChunkVO;
+import com.audioagent.file.multipart.vo.MultipartUploadCompleteVO;
+import com.audioagent.file.multipart.vo.MultipartUploadInitVO;
+import com.audioagent.file.multipart.vo.MultipartUploadProgressVO;
 import com.audioagent.file.service.AudioFileService;
+import com.audioagent.file.service.AudioVersionService;
 import com.audioagent.file.vo.AudioFileVO;
 import com.audioagent.file.vo.AudioFileListVO;
 import com.audioagent.file.vo.AudioPlaybackUrlVO;
+import com.audioagent.file.vo.AudioVersionChainVO;
 import com.audioagent.infrastructure.minio.MinioStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +38,8 @@ import java.nio.charset.StandardCharsets;
 public class AudioFileController {
 
     private final AudioFileService audioFileService;
+    private final AudioVersionService audioVersionService;
+    private final MultipartUploadService multipartUploadService;
     private final MinioStorageService minioStorageService;
     private final CurrentUserProvider currentUserProvider;
 
@@ -58,6 +68,48 @@ public class AudioFileController {
         return ApiResponse.success(result);
     }
 
+    @PostMapping("/multipart/init")
+    public ApiResponse<MultipartUploadInitVO> initializeMultipartUpload(
+            @RequestBody MultipartUploadInitRequest request
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(
+                multipartUploadService.initialize(userId, request));
+    }
+
+    @PutMapping(
+            value = "/multipart/{uploadId}/chunks/{chunkIndex}",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ApiResponse<MultipartChunkVO> uploadChunk(
+            @PathVariable String uploadId,
+            @PathVariable int chunkIndex,
+            @RequestParam long chunkSize,
+            @RequestPart("chunk") MultipartFile chunk
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(multipartUploadService.uploadChunk(
+                userId, uploadId, chunkIndex, chunkSize, chunk));
+    }
+
+    @GetMapping("/multipart/{uploadId}")
+    public ApiResponse<MultipartUploadProgressVO> getMultipartProgress(
+            @PathVariable String uploadId
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(
+                multipartUploadService.progress(userId, uploadId));
+    }
+
+    @PostMapping("/multipart/{uploadId}/complete")
+    public ApiResponse<MultipartUploadCompleteVO> completeMultipartUpload(
+            @PathVariable String uploadId
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(
+                multipartUploadService.complete(userId, uploadId));
+    }
+
     @GetMapping("/{fileId}")
     public ApiResponse<AudioFileVO> getFileDetail(
             @PathVariable("fileId") Long fileId
@@ -77,6 +129,15 @@ public class AudioFileController {
         return ApiResponse.success(
                 audioFileService.getPlaybackUrl(userId, fileId)
         );
+    }
+
+    @GetMapping("/{fileId}/versions")
+    public ApiResponse<AudioVersionChainVO> getVersions(
+            @PathVariable("fileId") Long fileId
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(
+                audioVersionService.getByAudioFile(userId, fileId));
     }
 
     @GetMapping("/{fileId}/download")

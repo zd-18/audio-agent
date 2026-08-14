@@ -15,6 +15,7 @@ import com.audioagent.agent.model.AgentConversationStatus;
 import com.audioagent.agent.model.AgentMessageRole;
 import com.audioagent.agent.model.AgentMessageStatus;
 import com.audioagent.agent.model.AgentModelResponse;
+import com.audioagent.agent.model.AgentRequestMode;
 import com.audioagent.agent.prompt.TranscriptChatPromptV1;
 import com.audioagent.agent.service.AgentChatService;
 import com.audioagent.agent.validation.AgentCitationValidator;
@@ -23,6 +24,9 @@ import com.audioagent.agent.validation.AgentResponseParser;
 import com.audioagent.agent.vo.AgentCitationVO;
 import com.audioagent.agent.vo.AgentMessageVO;
 import com.audioagent.agent.vo.SendAgentMessageVO;
+import com.audioagent.agent.workflow.model.AgentWorkflowPlanningResult;
+import com.audioagent.agent.workflow.service.AgentProcessingWorkflowService;
+import com.audioagent.agent.workflow.vo.AgentProcessingWorkflowVO;
 import com.audioagent.ai.AiChatClient;
 import com.audioagent.ai.AiChatMessage;
 import com.audioagent.ai.AiChatRequest;
@@ -67,6 +71,7 @@ public class AgentChatServiceImpl implements AgentChatService {
     private final AgentCitationValidator citationValidator;
     private final AiChatClient aiChatClient;
     private final AgentProperties properties;
+    private final AgentProcessingWorkflowService workflowService;
     private final TransactionTemplate transactionTemplate;
 
     @Override
@@ -115,7 +120,10 @@ public class AgentChatServiceImpl implements AgentChatService {
         }
 
         try {
-            return execute(userId, preparation, validated.content());
+            return validated.mode() == AgentRequestMode.PROCESSING
+                    ? executeProcessing(userId, preparation,
+                    validated.content())
+                    : execute(userId, preparation, validated.content());
         } catch (RuntimeException error) {
             AgentFailure failure = classify(error);
             Throwable rootCause = NestedExceptionUtils
@@ -280,6 +288,34 @@ public class AgentChatServiceImpl implements AgentChatService {
                 .build();
     }
 
+    private SendAgentMessageVO executeProcessing(
+            Long userId, Preparation preparation, String requirement) {
+        AgentWorkflowPlanningResult planned = workflowService.plan(userId,
+                preparation.conversation(), preparation.userMessage(),
+                preparation.assistantMessage(), requirement);
+        AgentModelResponse response = new AgentModelResponse();
+        response.setAnswer(planned.assistantMessage());
+        response.setInsufficientContext(true);
+        response.setCitations(List.of());
+        AiChatResponse aiResponse = new AiChatResponse("",
+                planned.promptTokens(), planned.completionTokens(),
+                planned.totalTokens(), planned.modelName());
+        Completion completion = transactionTemplate.execute(status ->
+                complete(userId, preparation, response, List.of(),
+                        aiResponse));
+        if (completion == null) {
+            throw new AgentExecutionException(ErrorCode.AGENT_PLAN_FAILED,
+                    false, "Agent processing plan could not be stored");
+        }
+        return SendAgentMessageVO.builder()
+                .userMessage(AgentMessageVO.from(
+                        preparation.userMessage(), List.of()))
+                .assistantMessage(AgentMessageVO.from(
+                        completion.message(), List.of()))
+                .processingWorkflow(planned.workflow())
+                .build();
+    }
+
     private Completion complete(Long userId, Preparation preparation,
                                 AgentModelResponse parsed,
                                 List<ValidatedCitation> citations,
@@ -380,6 +416,8 @@ public class AgentChatServiceImpl implements AgentChatService {
         return SendAgentMessageVO.builder()
                 .userMessage(AgentMessageVO.from(userMessage, List.of()))
                 .assistantMessage(AgentMessageVO.from(assistant, citations))
+                .processingWorkflow(workflowService.findByUserMessage(
+                        userId, userMessage.getId()))
                 .build();
     }
 
@@ -426,8 +464,18 @@ public class AgentChatServiceImpl implements AgentChatService {
             throw new BusinessException(ErrorCode.PARAM_INVALID,
                     "clientRequestId is invalid");
         }
+        AgentRequestMode mode;
+        try {
+            mode = AgentRequestMode.valueOf(
+                    StringUtils.hasText(request.getMode())
+                            ? request.getMode().trim().toUpperCase()
+                            : AgentRequestMode.CHAT.name());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "Agent request mode is invalid");
+        }
         return new ValidatedRequest(content,
-                request.getClientRequestId().trim());
+                request.getClientRequestId().trim(), mode);
     }
 
     private Long parseId(String value, String message) {
@@ -457,7 +505,8 @@ public class AgentChatServiceImpl implements AgentChatService {
     }
 
     private record ValidatedRequest(String content,
-                                    String clientRequestId) {
+                                    String clientRequestId,
+                                    AgentRequestMode mode) {
     }
 
     private record Preparation(AgentConversation conversation,

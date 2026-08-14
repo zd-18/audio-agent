@@ -42,12 +42,16 @@ public class ProcessingOutputValidator {
                 || metadata.getSampleRate() <= 0) {
             throw invalid("Processed audio metadata is invalid");
         }
-        long tolerance = properties.getValidation()
-                .getDurationToleranceMs();
-        if (Math.abs(metadata.getDurationMs() - expectedDurationMs)
-                > tolerance) {
-            throw invalid("Processed audio duration is outside tolerance");
+        long actualDurationMs = metadata.getDurationMs();
+        long toleranceMs = durationToleranceMs();
+        long differenceMs = Math.abs(actualDurationMs - expectedDurationMs);
+        if (differenceMs > toleranceMs) {
+            throw invalid("处理后的音频时长异常，请重新处理或检查源文件。");
         }
+    }
+
+    public long durationToleranceMs() {
+        return properties.getValidation().getDurationToleranceMs();
     }
 
     private ProcessingExecutionException invalid(String message) {

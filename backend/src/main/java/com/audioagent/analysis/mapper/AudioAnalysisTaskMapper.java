@@ -13,6 +13,26 @@ import org.apache.ibatis.annotations.Select;
 public interface AudioAnalysisTaskMapper extends BaseMapper<AudioAnalysisTask> {
 
     @Select("""
+            SELECT t.*
+            FROM audio_analysis_task t
+            WHERE t.audio_file_id = #{audioFileId}
+              AND t.status = 'SUCCESS'
+            ORDER BY t.finished_at DESC, t.created_at DESC, t.id DESC
+            LIMIT 1
+            """)
+    AudioAnalysisTask selectLatestSuccessfulByAudioFileId(
+            @Param("audioFileId") Long audioFileId);
+
+    @Select("""
+            SELECT *
+            FROM audio_analysis_task
+            WHERE source_event_id = #{sourceEventId}
+            LIMIT 1
+            """)
+    AudioAnalysisTask selectBySourceEventId(
+            @Param("sourceEventId") Long sourceEventId);
+
+    @Select("""
             <script>
             SELECT t.id AS task_id,
                    t.audio_file_id,

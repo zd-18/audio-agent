@@ -11,13 +11,13 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 import LandingPage from './pages/landing/LandingPage'
 import ProcessingPlanPage from './pages/processing-plan/ProcessingPlanPage'
 import ProcessingExecutionPage from './pages/processing-execution/ProcessingExecutionPage'
-import ProcessingExecutionListPage from './pages/processing-execution/ProcessingExecutionListPage'
 import AgentConversationPage from './pages/agent/AgentConversationPage'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import TranscriptionListPage from './pages/transcription/TranscriptionListPage'
 import TranscriptionDetailPage from './pages/transcription/TranscriptionDetailPage'
+import UserTasksPage from './pages/tasks/UserTasksPage'
 
 export default function App() {
   return (
@@ -30,14 +30,15 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route path="/workbench" element={<Navigate to="/dashboard" replace />} />
         <Route path="/files" element={<Navigate to="/audio/files" replace />} />
-        <Route path="/analysis-tasks" element={<Navigate to="/analysis/tasks" replace />} />
+        <Route path="/analysis-tasks" element={<Navigate to="/tasks" replace />} />
         <Route element={<WorkbenchLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/tasks" element={<UserTasksPage />} />
           <Route path="/audio/upload" element={<AudioUploadPage />} />
           <Route path="/audio/files" element={<AudioFileLookupPage />} />
           <Route path="/audio/files/:audioFileId" element={<AudioFileDetailPage />} />
           <Route path="/analysis/tasks" element={<AnalysisTaskLookupPage />} />
-          <Route path="/processing/executions" element={<ProcessingExecutionListPage />} />
+          <Route path="/processing/executions" element={<Navigate to="/tasks" replace />} />
           <Route path="/transcriptions" element={<TranscriptionListPage />} />
           <Route path="/transcriptions/:taskId/agent" element={<AgentConversationPage />} />
           <Route path="/transcriptions/:taskId" element={<TranscriptionDetailPage />} />

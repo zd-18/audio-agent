@@ -43,6 +43,15 @@ const WHOLE_AUDIO_OPERATIONS = new Set<ProcessingOperationType>([
   'LIMIT_PEAK',
 ])
 
+const EXECUTABLE_OPERATIONS = new Set<ProcessingOperationType>([
+  'NORMALIZE_VOLUME',
+  'TRIM_SEGMENT',
+])
+
+export function isExecutableProcessingOperation(operation: ProcessingOperationType) {
+  return EXECUTABLE_OPERATIONS.has(operation)
+}
+
 export interface ParameterDisplayItem {
   label: string
   value: string

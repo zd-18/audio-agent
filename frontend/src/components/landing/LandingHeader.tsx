@@ -1,6 +1,9 @@
-import { CloseOutlined, MenuOutlined } from '@ant-design/icons'
+import { CloseOutlined, LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons'
+import { Avatar, Dropdown } from 'antd'
+import type { MenuProps } from 'antd'
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
 import type { LandingSectionId } from '../../pages/landing/LandingPage'
 import AnimatedBorderButton from './AnimatedBorderButton'
 
@@ -20,6 +23,24 @@ interface LandingHeaderProps {
 
 export default function LandingHeader({ activeSection, isScrolled, onNavigate }: LandingHeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const { authStatus, currentUser, logout } = useAuth()
+  const isAuthenticated = authStatus === 'authenticated' && currentUser !== null
+  const userName = currentUser?.displayName || currentUser?.username || '当前用户'
+  const userMenuItems: MenuProps['items'] = [
+    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
+  ]
+
+  const handleUserMenu: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'logout') {
+      void (async () => {
+        try {
+          await logout()
+        } catch {
+          // AuthContext clears the local session in finally even if the request fails.
+        }
+      })()
+    }
+  }
 
   const handleNavClick = (event: MouseEvent<HTMLAnchorElement>, id: LandingSectionId) => {
     event.preventDefault()
@@ -69,9 +90,31 @@ export default function LandingHeader({ activeSection, isScrolled, onNavigate }:
         </nav>
 
         <div className="landing-header__actions">
-          <Link className="landing-login" to="/login">
-            登录
-          </Link>
+          {authStatus === 'anonymous' && (
+            <Link className="landing-login landing-login--anonymous" to="/login">
+              登录
+            </Link>
+          )}
+          {isAuthenticated && (
+            <Dropdown
+              menu={{ items: userMenuItems, onClick: handleUserMenu }}
+              placement="bottomRight"
+              trigger={['click']}
+            >
+              <button
+                className="landing-login landing-user-trigger"
+                type="button"
+                aria-label={`打开${userName}的用户菜单`}
+              >
+                <Avatar
+                  size={28}
+                  src={currentUser.avatarUrl || undefined}
+                  icon={<UserOutlined />}
+                />
+                <span className="landing-user-trigger__name">{userName}</span>
+              </button>
+            </Dropdown>
+          )}
           <AnimatedBorderButton to="/dashboard" variant="compact">
             进入工作台
           </AnimatedBorderButton>

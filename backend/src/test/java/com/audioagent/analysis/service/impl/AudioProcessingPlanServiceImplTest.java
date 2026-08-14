@@ -18,12 +18,14 @@ import com.audioagent.analysis.processing.ProcessingPlanStatus;
 import com.audioagent.analysis.processing.ProcessingPriority;
 import com.audioagent.analysis.processing.ProcessingRiskLevel;
 import com.audioagent.analysis.processing.ProcessingStepDraft;
+import com.audioagent.analysis.processing.ProcessingParameterValidator;
 import com.audioagent.analysis.service.AudioAnalysisReportService;
 import com.audioagent.analysis.vo.AudioAnalysisReportVO;
 import com.audioagent.analysis.vo.ProcessingPlanVO;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
+import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.setting.service.UserSettingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,7 +77,9 @@ class AudioProcessingPlanServiceImplTest {
         objectMapper = new ObjectMapper().findAndRegisterModules();
         service = new AudioProcessingPlanServiceImpl(taskMapper,
                 resultMapper, issueMapper, planMapper, stepMapper,
-                confirmationMapper, reportService, generator,
+                confirmationMapper, mock(AudioFileMapper.class),
+                reportService, generator,
+                mock(ProcessingParameterValidator.class),
                 userSettingService, properties, objectMapper);
     }
 
@@ -159,7 +163,8 @@ class AudioProcessingPlanServiceImplTest {
 
         assertTrue(json.contains("\"9223372036854775806\""));
         assertTrue(json.contains("\"parameters\":{")
-                && json.contains("\"suggestedGainDb\":3.0"));
+                && json.contains("\"targetLufs\":-16")
+                && json.contains("\"truePeakLimitDbfs\":-1"));
         ArgumentCaptor<AudioProcessingPlan> captor =
                 ArgumentCaptor.forClass(AudioProcessingPlan.class);
         verify(planMapper).upsert(captor.capture());
@@ -224,6 +229,32 @@ class AudioProcessingPlanServiceImplTest {
     }
 
     @Test
+    void unsupportedGeneratedOperationIsNotSaved() {
+        when(taskMapper.selectById(10L)).thenReturn(
+                task(AnalysisTaskStatus.SUCCESS));
+        when(reportService.getReport(10L)).thenReturn(
+                AudioAnalysisReportVO.builder().build());
+        when(resultMapper.selectOne(any())).thenReturn(result());
+        when(issueMapper.selectByTask(10L)).thenReturn(List.of());
+        ProcessingStepDraft unsupported = new ProcessingStepDraft(
+                ProcessingOperationType.LIMIT_PEAK, "控制过高峰值",
+                "description", null, null, null,
+                ProcessingPriority.MEDIUM, ProcessingRiskLevel.MEDIUM,
+                true, Map.of("truePeakLimitDbfs", -1), "reason");
+        when(generator.generate(any())).thenReturn(
+                new ProcessingPlanDraft(ProcessingPlanStatus.READY,
+                        "summary", 10_000L, List.of(unsupported), 0, 0));
+
+        BusinessException exception = assertThrows(
+                BusinessException.class, () -> service.generate(10L));
+
+        assertEquals(ErrorCode.PROCESSING_PLAN_GENERATION_FAILED.getCode(),
+                exception.getCode());
+        verify(planMapper, never()).upsert(any());
+        verify(stepMapper, never()).deleteByPlanId(any());
+    }
+
+    @Test
     void savedStepOrderIsContinuous() {
         when(taskMapper.selectById(10L)).thenReturn(
                 task(AnalysisTaskStatus.SUCCESS));
@@ -233,13 +264,13 @@ class AudioProcessingPlanServiceImplTest {
         when(issueMapper.selectByTask(10L)).thenReturn(List.of());
         ProcessingStepDraft one = draft().steps().getFirst();
         ProcessingStepDraft two = new ProcessingStepDraft(
-                ProcessingOperationType.DECREASE_GAIN, "降低突发音量",
+                ProcessingOperationType.TRIM_SEGMENT, "裁剪片段",
                 "description", 51L, 300L, 400L,
                 ProcessingPriority.MEDIUM, ProcessingRiskLevel.MEDIUM,
                 true, Map.of(), "reason");
         ProcessingStepDraft three = new ProcessingStepDraft(
-                ProcessingOperationType.LIMIT_PEAK, "控制过高峰值",
-                "description", null, null, null,
+                ProcessingOperationType.TRIM_SEGMENT, "裁剪片段",
+                "description", 52L, 500L, 600L,
                 ProcessingPriority.LOW, ProcessingRiskLevel.MEDIUM,
                 true, Map.of(), "reason");
         when(generator.generate(any())).thenReturn(
@@ -295,11 +326,12 @@ class AudioProcessingPlanServiceImplTest {
 
     private ProcessingPlanDraft draft() {
         ProcessingStepDraft step = new ProcessingStepDraft(
-                ProcessingOperationType.INCREASE_GAIN,
-                "提升局部音量", "建议适当提升该片段音量。", 50L,
-                100L, 200L, ProcessingPriority.MEDIUM,
+                ProcessingOperationType.NORMALIZE_VOLUME,
+                "整段音量标准化", "统一整段音量并控制峰值。", null,
+                null, null, ProcessingPriority.MEDIUM,
                 ProcessingRiskLevel.MEDIUM, true,
-                Map.of("suggestedGainDb", 3.0), "局部音量偏低。");
+                Map.of("targetLufs", -16,
+                        "truePeakLimitDbfs", -1), "整体音量偏差。");
         return new ProcessingPlanDraft(ProcessingPlanStatus.READY,
                 "summary", 10_000L, List.of(step), 0, 0);
     }

@@ -3,6 +3,14 @@ import type { PageResult, ResourceId } from './api'
 export type AgentConversationStatus = 'ACTIVE' | 'ARCHIVED'
 export type AgentMessageRole = 'USER' | 'ASSISTANT'
 export type AgentMessageStatus = 'SUCCESS' | 'FAILED' | 'PROCESSING'
+export type AgentRequestMode = 'CHAT' | 'PROCESSING'
+export type AgentWorkflowStatus =
+  | 'PLANNING'
+  | 'WAITING_CONFIRMATION'
+  | 'EXECUTING'
+  | 'REVIEWING'
+  | 'SUCCESS'
+  | 'FAILED'
 
 export interface AgentConversation {
   conversationId: ResourceId
@@ -60,9 +68,41 @@ export interface CreateAgentConversationRequest {
 export interface SendAgentMessageRequest {
   content: string
   clientRequestId: string
+  mode?: AgentRequestMode
 }
 
 export interface AgentMessagePair {
   userMessage: AgentMessage
   assistantMessage: AgentMessage
+  processingWorkflow?: AgentProcessingWorkflow | null
+}
+
+export interface AgentProcessingWorkflowStep {
+  order: number
+  operationType: 'NORMALIZE_VOLUME' | 'TRIM_SEGMENT'
+  title: string
+  reason: string | null
+  startMs: number | null
+  endMs: number | null
+}
+
+export interface AgentProcessingWorkflow {
+  workflowId: ResourceId
+  conversationId: ResourceId
+  userMessageId: ResourceId
+  assistantMessageId: ResourceId
+  taskId: ResourceId
+  audioFileId: ResourceId
+  planId: ResourceId | null
+  confirmationId: ResourceId | null
+  executionId: ResourceId | null
+  resultFileId: ResourceId | null
+  status: AgentWorkflowStatus
+  summary: string | null
+  steps: AgentProcessingWorkflowStep[]
+  progressPercent: number | null
+  failureReason: string | null
+  createdAt: string
+  updatedAt: string
+  finishedAt: string | null
 }

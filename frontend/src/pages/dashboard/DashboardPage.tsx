@@ -28,7 +28,7 @@ export default function DashboardPage() {
         eyebrow="WORKSPACE OVERVIEW"
         title="AudioAgent 工作台"
         description="管理音频文件、分析任务与处理结果。"
-        actions={<><Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>上传新音频</Button></Link><Link to="/analysis/tasks"><Button>查看分析任务</Button></Link></>}
+        actions={<><Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>上传新音频</Button></Link><Link to="/tasks"><Button>查看任务进度</Button></Link></>}
       />
 
       <div className="workbench-demo-notice"><Tag color="purple">演示数据</Tag><span>当前后端暂无列表与统计接口，以下数据仅用于展示工作台布局。</span></div>
@@ -42,10 +42,10 @@ export default function DashboardPage() {
         <div className="audio-dashboard-actions">
           <QuickActionCard title="上传音频" description="选择本地音频文件" icon={<CloudUploadOutlined />} to="/audio/upload" />
           <QuickActionCard title="查询文件" description="按文件 ID 查看信息" icon={<FileSearchOutlined />} to="/audio/files" />
-          <QuickActionCard title="创建分析任务" description="为已上传文件发起分析" icon={<PlusCircleOutlined />} to="/analysis/tasks?action=create" />
-          <QuickActionCard title="查询任务" description="查看任务处理进度" icon={<SearchOutlined />} to="/analysis/tasks" />
+          <QuickActionCard title="开始分析音频" description="选择已上传的音频开始处理" icon={<PlusCircleOutlined />} to="/audio/files" />
+          <QuickActionCard title="任务进度" description="查看当前阶段和下一步操作" icon={<SearchOutlined />} to="/tasks" />
           <QuickActionCard title="音频转写" description="生成文字稿与时间片段" icon={<FileTextOutlined />} to="/transcriptions" />
-          <QuickActionCard title="查看失败任务" description="定位错误并人工重试" icon={<ReloadOutlined />} to="/analysis/tasks?status=FAILED" />
+          <QuickActionCard title="待处理任务" description="查看失败原因并继续处理" icon={<ReloadOutlined />} to="/tasks" />
         </div>
       </section>
 
@@ -77,7 +77,7 @@ export default function DashboardPage() {
       </div>
 
       <section className="workbench-panel audio-dashboard-table-panel">
-        <div className="workbench-panel__heading"><div><span>RECENT TASKS</span><h3>最近分析任务</h3></div><Link to="/analysis/tasks">查看全部</Link></div>
+        <div className="workbench-panel__heading"><div><span>RECENT TASKS</span><h3>最近任务</h3></div><Link to="/tasks">查看全部</Link></div>
         <Table
           dataSource={recentTasksMock}
           pagination={false}

@@ -13,6 +13,7 @@ import com.audioagent.analysis.mapper.AudioProcessingPlanMapper;
 import com.audioagent.analysis.mapper.AudioProcessingStepConfirmationMapper;
 import com.audioagent.analysis.mapper.AudioProcessingStepMapper;
 import com.audioagent.analysis.processing.ProcessingConfirmationStatus;
+import com.audioagent.analysis.processing.ProcessingOperationType;
 import com.audioagent.analysis.processing.ProcessingParameterValidator;
 import com.audioagent.analysis.processing.ProcessingPlanStatus;
 import com.audioagent.analysis.processing.ProcessingStepDecision;
@@ -288,6 +289,7 @@ public class AudioProcessingConfirmationServiceImpl
             }
             ProcessingStepDecision value = parseDecision(
                     decision.getDecision());
+            requireExecutableIfAccepted(source, value);
             if (value == ProcessingStepDecision.PENDING) {
                 continue;
             }
@@ -322,6 +324,29 @@ public class AudioProcessingConfirmationServiceImpl
                 safeSteps(processingStepMapper.selectByPlanId(plan.getId())),
                 safeDecisions(stepConfirmationMapper.selectByConfirmationId(
                         confirmation.getId())));
+    }
+
+    private void requireExecutableIfAccepted(
+            AudioProcessingStep source, ProcessingStepDecision decision) {
+        if (decision != ProcessingStepDecision.ACCEPTED) {
+            return;
+        }
+        ProcessingOperationType operation;
+        try {
+            operation = ProcessingOperationType.valueOf(
+                    source.getOperationType());
+        } catch (Exception e) {
+            throw legacyOperation(source.getOperationType());
+        }
+        if (!operation.isExecutable()) {
+            throw legacyOperation(operation.name());
+        }
+    }
+
+    private BusinessException legacyOperation(String operation) {
+        return new BusinessException(ErrorCode.PROCESSING_CONFIRMATION_STALE,
+                "Processing operation " + operation
+                        + " is not executable in this stage; regenerate the plan");
     }
 
     private ProcessingConfirmationVO toVO(

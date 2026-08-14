@@ -1,9 +1,13 @@
 import { CheckCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 import { Alert, Button, Skeleton } from 'antd'
+import { useEffect, useState } from 'react'
+import { useAudioVersions } from '../../../hooks/useAudioVersions'
 import type { AudioFileRecord } from '../../../types/api'
+import type { AudioVersion } from '../../../types/audioVersion'
 import type { ProcessingExecution } from '../../../types/processingExecution'
 import { formatBytes, formatDuration } from '../../../utils/formatters'
 import AudioComparisonPlayer from './AudioComparisonPlayer'
+import AudioVersionHistory from './AudioVersionHistory'
 
 function fileFormat(file: AudioFileRecord | null) {
   if (file?.extension) return file.extension.toUpperCase()
@@ -30,7 +34,28 @@ export default function ExecutionResult({
   onDownload: (fileId: string, fileName: string) => void
 }) {
   const resultFileId = execution.resultFileId
+  const versionState = useAudioVersions(execution.taskId)
+  const [selectedAudioFileId, setSelectedAudioFileId] = useState(resultFileId || '')
+
+  useEffect(() => {
+    if (resultFileId) setSelectedAudioFileId(resultFileId)
+  }, [resultFileId])
+
   if (!resultFileId) return null
+
+  const selectedVersion = versionState.versions.find(
+    (version) => version.audioFileId === selectedAudioFileId,
+  )
+  const selectedFileId = selectedVersion?.audioFileId || resultFileId
+  const selectedFileName = selectedVersion?.fileName || resultFile?.originalName
+  const selectedDurationMs = selectedVersion?.durationMs ?? resultFile?.durationMs
+  const selectedVersionLabel = selectedVersion?.originalVersion
+    ? '原始版本'
+    : selectedVersion ? `版本 ${selectedVersion.versionNo}` : '当前修复结果'
+
+  const previewVersion = (version: AudioVersion) => {
+    setSelectedAudioFileId(version.audioFileId)
+  }
 
   return (
     <section id="processing-execution-result" className="processing-execution-result" aria-labelledby="processing-execution-result-title">
@@ -78,12 +103,25 @@ export default function ExecutionResult({
         </dl>
       )}
 
+      <AudioVersionHistory
+        versions={versionState.versions}
+        loading={versionState.loading}
+        error={versionState.error}
+        currentAudioFileId={resultFileId}
+        selectedAudioFileId={selectedFileId}
+        downloading={downloading}
+        onRefresh={versionState.refresh}
+        onPreview={previewVersion}
+        onDownload={onDownload}
+      />
+
       <AudioComparisonPlayer
         sourceFileId={execution.audioFileId}
-        resultFileId={resultFileId}
+        resultFileId={selectedFileId}
         sourceFileName={sourceFile?.originalName}
-        resultFileName={resultFile?.originalName}
-        resultDurationMs={resultFile?.durationMs}
+        resultFileName={selectedFileName}
+        resultDurationMs={selectedDurationMs}
+        resultVersionLabel={selectedVersionLabel}
         downloading={downloading}
         onDownload={onDownload}
       />

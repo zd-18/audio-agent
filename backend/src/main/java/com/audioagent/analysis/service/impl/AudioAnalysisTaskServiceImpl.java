@@ -77,6 +77,32 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public TaskVO createTask(CreateTaskRequest request) {
+        return createTaskInternal(request, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public TaskVO createTaskFromUploadedFile(Long audioFileId, Long userId,
+                                             Long sourceEventId) {
+        requireUserId(userId);
+        if (sourceEventId == null || sourceEventId <= 0) {
+            throw new IllegalArgumentException(
+                    "sourceEventId must be greater than 0");
+        }
+        AudioAnalysisTask existing =
+                audioAnalysisTaskMapper.selectBySourceEventId(sourceEventId);
+        if (existing != null) {
+            return TaskVO.from(existing);
+        }
+        CreateTaskRequest request = new CreateTaskRequest();
+        request.setAudioFileId(audioFileId);
+        request.setAnalysisType(AnalysisType.FULL.name());
+        return createTaskInternal(request, sourceEventId, userId);
+    }
+
+    private TaskVO createTaskInternal(CreateTaskRequest request,
+                                      Long sourceEventId,
+                                      Long expectedUserId) {
         Long audioFileId = request.getAudioFileId();
 
         AudioFile audioFile = audioFileMapper.selectById(audioFileId);
@@ -87,6 +113,12 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
                     "音频文件不存在"
             );
         }
+        if (expectedUserId != null
+                && !expectedUserId.equals(audioFile.getUserId())) {
+            throw new BusinessException(
+                    ErrorCode.AUDIO_FILE_ACCESS_DENIED,
+                    "Uploaded audio file does not belong to event user");
+        }
 
         AnalysisType analysisType = resolveAnalysisType(
                 request.getAnalysisType()
@@ -96,6 +128,7 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
 
         AudioAnalysisTask task = new AudioAnalysisTask();
         task.setAudioFileId(audioFileId);
+        task.setSourceEventId(sourceEventId);
         task.setAnalysisType(analysisType);
         task.setStatus(AnalysisTaskStatus.PENDING);
         task.setProgress(0);

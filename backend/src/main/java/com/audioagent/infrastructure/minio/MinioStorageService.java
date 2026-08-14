@@ -1,6 +1,7 @@
 package com.audioagent.infrastructure.minio;
 
 import java.io.InputStream;
+import java.util.List;
 
 public interface MinioStorageService {
 
@@ -23,6 +24,13 @@ public interface MinioStorageService {
      * 删除文件。
      */
     void delete(String objectKey);
+
+    void deleteAll(List<String> objectKeys);
+
+    void compose(String objectKey, List<String> sourceObjectKeys,
+                 String contentType);
+
+    void copy(String sourceObjectKey, String targetObjectKey);
 
     /**
      * 生成临时访问地址。

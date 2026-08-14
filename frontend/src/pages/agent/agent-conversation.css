@@ -230,6 +230,83 @@
 .agent-message__failed-card time { color: var(--workbench-text-muted); font-size: 10px; }
 .agent-message__thinking { display: inline-flex; align-items: center; min-height: 24px; gap: 9px; color: var(--workbench-text-secondary); font-size: 13px; }
 
+.agent-workflow-card {
+  display: grid;
+  width: min(100%, 720px);
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(126, 91, 239, .3);
+  border-radius: 12px;
+  background: rgba(18, 24, 48, .72);
+}
+.agent-workflow-card.is-failed { border-color: rgba(255, 107, 129, .34); }
+.agent-workflow-progress {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agent-workflow-progress li {
+  display: grid;
+  position: relative;
+  justify-items: center;
+  min-width: 0;
+  gap: 7px;
+  color: var(--workbench-text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+}
+.agent-workflow-progress li::before {
+  position: absolute;
+  top: 11px;
+  right: calc(50% + 12px);
+  left: calc(-50% + 12px);
+  height: 1px;
+  background: var(--workbench-border);
+  content: '';
+}
+.agent-workflow-progress li:first-child::before { display: none; }
+.agent-workflow-progress li.is-completed,
+.agent-workflow-progress li.is-active { color: var(--workbench-text); }
+.agent-workflow-progress li.is-completed::before,
+.agent-workflow-progress li.is-active::before { background: rgba(66, 220, 199, .52); }
+.agent-workflow-progress li.is-failed { color: #ffc1cb; }
+.agent-workflow-progress__icon {
+  display: grid;
+  z-index: 1;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #11172d;
+  color: #68718f;
+  font-size: 15px;
+}
+.agent-workflow-progress li.is-completed .agent-workflow-progress__icon { color: #7de7d8; }
+.agent-workflow-progress li.is-active .agent-workflow-progress__icon { color: #cbb8ff; }
+.agent-workflow-progress li.is-failed .agent-workflow-progress__icon { color: #ff91a4; }
+.agent-workflow-plan { display: grid; gap: 10px; }
+.agent-workflow-plan > strong { color: var(--workbench-text); font-size: 14px; line-height: 1.5; }
+.agent-workflow-plan ol { display: grid; gap: 8px; margin: 0; padding-left: 24px; color: var(--workbench-text-secondary); }
+.agent-workflow-plan li { padding-left: 3px; font-size: 12px; line-height: 1.5; }
+.agent-workflow-plan li span,
+.agent-workflow-plan li small { display: block; }
+.agent-workflow-plan li small { margin-top: 2px; color: var(--workbench-text-muted); font-size: 11px; }
+.agent-workflow-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--workbench-border);
+}
+.agent-workflow-confirm p,
+.agent-workflow-live { margin: 0; color: var(--workbench-text-secondary); font-size: 12px; line-height: 1.6; }
+.agent-workflow-confirm .ant-btn { min-height: 44px; flex: 0 0 auto; }
+
 .agent-message__failed-card {
   display: grid;
   width: min(100%, 620px);
@@ -318,6 +395,33 @@
   background: rgba(9, 14, 31, .96);
 }
 .agent-composer > label { color: var(--workbench-text-secondary); font-size: 12px; font-weight: 600; }
+.agent-composer__mode {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 10px;
+  background: rgba(2, 12, 20, .32);
+}
+.agent-composer__mode button {
+  min-width: 96px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--workbench-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  transition: background 180ms ease, color 180ms ease;
+}
+.agent-composer__mode button:hover { color: var(--workbench-text); }
+.agent-composer__mode button:focus-visible { outline: 3px solid var(--workbench-accent); outline-offset: 2px; }
+.agent-composer__mode button.is-active { background: var(--workbench-primary-soft); color: #d8ccff; }
+.agent-composer__mode button:disabled { cursor: not-allowed; opacity: .5; }
 .agent-composer__error { margin-bottom: 2px; }
 .agent-composer__error .ant-alert-action { margin-inline-start: 12px; }
 .agent-composer__input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
@@ -356,10 +460,16 @@
   .agent-composer__input-row { grid-template-columns: 1fr; }
   .agent-composer__input-row > .ant-btn { width: 100%; min-height: 44px; }
   .agent-composer__error .ant-alert-action { margin-inline-start: 0; margin-top: 8px; }
+  .agent-workflow-progress { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
+  .agent-workflow-progress li:nth-child(4)::before { display: none; }
+  .agent-workflow-confirm { align-items: stretch; flex-direction: column; }
+  .agent-workflow-confirm .ant-btn { width: 100%; }
+  .agent-composer__mode { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-conversation-item,
   .agent-recommendations button,
   .agent-citation { transition-duration: .01ms; }
+  .agent-composer__mode button { transition-duration: .01ms; }
 }

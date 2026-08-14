@@ -104,9 +104,8 @@ public class ProcessingExecutionSnapshotParser {
         } catch (Exception e) {
             throw unsupported();
         }
-        if (operation != ProcessingOperationType.NORMALIZE_VOLUME
-                && operation != ProcessingOperationType.TRIM_SEGMENT) {
-            throw unsupported();
+        if (!operation.isExecutable()) {
+            throw unsupported(value);
         }
         return operation;
     }
@@ -163,9 +162,15 @@ public class ProcessingExecutionSnapshotParser {
     }
 
     private ProcessingExecutionException unsupported() {
+        return unsupported(null);
+    }
+
+    private ProcessingExecutionException unsupported(String operation) {
+        String detail = operation == null ? "unknown" : operation;
         return new ProcessingExecutionException(
                 ErrorCode.PROCESSING_EXECUTION_UNSUPPORTED_OPERATION,
-                false, "Only NORMALIZE_VOLUME and TRIM_SEGMENT are supported");
+                false, "Confirmed plan contains legacy operation " + detail
+                + "; regenerate and confirm a new processing plan");
     }
 
     private ProcessingExecutionException invalidSnapshot(String message) {

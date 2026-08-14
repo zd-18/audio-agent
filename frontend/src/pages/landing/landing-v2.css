@@ -188,6 +188,22 @@
   gap: 22px;
 }
 
+.landing-user-trigger {
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.landing-user-trigger__name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .landing-header__menu-button {
   display: none;
   align-items: center;
@@ -1941,7 +1957,8 @@
   .landing-page { --landing-card-reveal-offset: 18px; }
   .landing-header__inner { grid-template-columns: auto 1fr auto; }
   .landing-nav { justify-self: center; gap: 18px; }
-  .landing-login { display: none; }
+  .landing-login--anonymous { display: none; }
+  .landing-user-trigger__name { display: none; }
   .landing-hero { grid-template-columns: 1fr; padding-top: 52px; text-align: center; }
   .landing-hero__copy { max-width: 720px; margin: 0 auto; }
   .landing-eyebrow,

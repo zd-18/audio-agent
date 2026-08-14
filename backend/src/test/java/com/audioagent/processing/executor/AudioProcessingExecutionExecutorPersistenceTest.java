@@ -7,6 +7,7 @@ import com.audioagent.common.enums.FileRole;
 import com.audioagent.common.enums.FileStatus;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.file.mapper.AudioFileMapper;
+import com.audioagent.file.service.AudioVersionSummaryBuilder;
 import com.audioagent.infrastructure.minio.MinioProperties;
 import com.audioagent.infrastructure.minio.MinioStorageService;
 import com.audioagent.processing.entity.AudioProcessingExecution;
@@ -18,6 +19,7 @@ import com.audioagent.processing.mapper.AudioProcessingExecutionStepMapper;
 import com.audioagent.processing.pipeline.AudioProcessingPipeline;
 import com.audioagent.processing.pipeline.ProcessingOutput;
 import com.audioagent.processing.pipeline.ProcessingOutputValidator;
+import com.audioagent.processing.critic.ProcessingResultCritic;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,6 +67,7 @@ class AudioProcessingExecutionExecutorPersistenceTest {
     private AudioProcessingPipeline pipeline;
     private AudioMetadataProbe metadataProbe;
     private ProcessingOutputValidator outputValidator;
+    private ProcessingResultCritic resultCritic;
     private ProcessingExecutionWorkDirectory workDirectories;
     private AudioProcessingExecutionExecutor executor;
     private AudioProcessingExecution execution;
@@ -79,6 +83,7 @@ class AudioProcessingExecutionExecutorPersistenceTest {
         pipeline = mock(AudioProcessingPipeline.class);
         metadataProbe = mock(AudioMetadataProbe.class);
         outputValidator = mock(ProcessingOutputValidator.class);
+        resultCritic = mock(ProcessingResultCritic.class);
         workDirectories = mock(ProcessingExecutionWorkDirectory.class);
         TransactionTemplate transactionTemplate =
                 mock(TransactionTemplate.class);
@@ -90,8 +95,10 @@ class AudioProcessingExecutionExecutorPersistenceTest {
         MinioProperties minioProperties = new MinioProperties();
         minioProperties.setBucketName("result-bucket");
         executor = new AudioProcessingExecutionExecutor(executionMapper,
-                stepMapper, fileMapper, storageService, minioProperties,
-                pipeline, metadataProbe, outputValidator, workDirectories,
+                stepMapper, fileMapper, new AudioVersionSummaryBuilder(),
+                storageService, minioProperties,
+                pipeline, metadataProbe, outputValidator, resultCritic,
+                workDirectories,
                 new ProcessingExecutionErrorClassifier(),
                 new ObjectMapper(), transactionTemplate);
 
@@ -104,6 +111,12 @@ class AudioProcessingExecutionExecutorPersistenceTest {
         when(executionMapper.selectExecutionById(EXECUTION_ID))
                 .thenReturn(execution);
         when(fileMapper.selectById(source.getId())).thenReturn(source);
+        when(fileMapper.selectBySourceExecutionId(EXECUTION_ID))
+                .thenReturn(null);
+        when(fileMapper.selectByIdForUpdate(source.getRootAudioFileId()))
+                .thenReturn(source);
+        when(fileMapper.selectNextVersionNo(source.getRootAudioFileId()))
+                .thenReturn(1);
         when(workDirectories.prepare(EXECUTION_ID))
                 .thenReturn(workDirectory);
         when(storageService.getObject("source-bucket", "original/key.wav"))
@@ -125,6 +138,7 @@ class AudioProcessingExecutionExecutorPersistenceTest {
                         .channels(2)
                         .bitRate(1_536_000L)
                         .build());
+        when(outputValidator.durationToleranceMs()).thenReturn(1_000L);
         doAnswer(invocation -> {
             InputStream input = invocation.getArgument(1);
             input.transferTo(java.io.OutputStream.nullOutputStream());
@@ -152,6 +166,11 @@ class AudioProcessingExecutionExecutorPersistenceTest {
         verify(fileMapper).insert(fileCaptor.capture());
         AudioFile result = fileCaptor.getValue();
         assertEquals(source.getId(), result.getSourceFileId());
+        assertEquals(source.getRootAudioFileId(),
+                result.getRootAudioFileId());
+        assertEquals(1, result.getVersionNo());
+        assertEquals("裁剪片段", result.getVersionSummary());
+        assertEquals(EXECUTION_ID, result.getSourceExecutionId());
         assertEquals(source.getUserId(), result.getUserId());
         assertEquals(FileRole.REPAIR_RESULT, result.getFileRole());
         assertEquals(FileStatus.AVAILABLE, result.getFileStatus());
@@ -170,14 +189,60 @@ class AudioProcessingExecutionExecutorPersistenceTest {
         assertEquals(0, result.getDeleted());
         verify(executionMapper).complete(EXECUTION_ID, result.getId(),
                 result.getCreatedAt());
-        verify(stepMapper).markProcessingSuccess(EXECUTION_ID,
-                result.getCreatedAt());
+        verify(stepMapper).markProcessingSuccess(eq(EXECUTION_ID), any());
         verify(storageService, never()).delete(any());
         verify(workDirectories).cleanQuietly(EXECUTION_ID);
+        verify(outputValidator).durationToleranceMs();
+        verify(resultCritic).review(any(Path.class),
+                any(AudioMetadata.class), eq(1_000L), any(), eq(1));
 
         assertEquals(originalObjectKey, source.getObjectKey());
         assertEquals(originalRole, source.getFileRole());
         assertEquals(FileRole.ORIGINAL, source.getFileRole());
+    }
+
+    @Test
+    void processingVersionOneCreatesVersionTwoWithoutChangingItsParent()
+            throws Exception {
+        source.setId(21L);
+        source.setRootAudioFileId(20L);
+        source.setVersionNo(1);
+        source.setVersionSummary("音量优化");
+        execution.setAudioFileId(21L);
+        AudioFile root = source();
+        root.setId(20L);
+        root.setRootAudioFileId(20L);
+        root.setVersionNo(0);
+        root.setVersionSummary("原始版本");
+        when(fileMapper.selectById(21L)).thenReturn(source);
+        when(fileMapper.selectByIdForUpdate(20L)).thenReturn(root);
+        when(fileMapper.selectNextVersionNo(20L)).thenReturn(2);
+
+        executor.execute(EXECUTION_ID);
+
+        ArgumentCaptor<AudioFile> captor =
+                ArgumentCaptor.forClass(AudioFile.class);
+        verify(fileMapper).insert(captor.capture());
+        AudioFile versionTwo = captor.getValue();
+        assertEquals(21L, versionTwo.getSourceFileId());
+        assertEquals(20L, versionTwo.getRootAudioFileId());
+        assertEquals(2, versionTwo.getVersionNo());
+        assertEquals("音量优化", source.getVersionSummary());
+        assertEquals(1, source.getVersionNo());
+    }
+
+    @Test
+    void repeatedExecutionCompletionDoesNotCreateAnotherVersion()
+            throws Exception {
+        when(executionMapper.claim(eq(EXECUTION_ID), any()))
+                .thenReturn(1, 0);
+
+        executor.execute(EXECUTION_ID);
+        executor.execute(EXECUTION_ID);
+
+        verify(fileMapper, times(1)).insert(any(AudioFile.class));
+        verify(executionMapper, times(1)).complete(
+                eq(EXECUTION_ID), any(), any());
     }
 
     @Test
@@ -193,7 +258,7 @@ class AudioProcessingExecutionExecutorPersistenceTest {
                 error.getFailureCode());
         assertTrue(error.isRetryable());
         verify(storageService).delete("repair/7/90/result.wav");
-        verify(stepMapper, never()).markProcessingSuccess(any(), any());
+        verify(stepMapper).markProcessingSuccess(eq(EXECUTION_ID), any());
         verify(workDirectories).cleanQuietly(EXECUTION_ID);
     }
 
@@ -250,6 +315,9 @@ class AudioProcessingExecutionExecutorPersistenceTest {
         value.setId(20L);
         value.setUserId(7L);
         value.setFileRole(FileRole.ORIGINAL);
+        value.setRootAudioFileId(20L);
+        value.setVersionNo(0);
+        value.setVersionSummary("原始版本");
         value.setOriginalName("interview.wav");
         value.setExtension("wav");
         value.setMimeType("audio/wav");

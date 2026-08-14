@@ -3,6 +3,7 @@ import type {
   AgentConversationPage,
   AgentMessagePage,
   AgentMessagePair,
+  AgentProcessingWorkflow,
   CreateAgentConversationRequest,
   SendAgentMessageRequest,
 } from '../types/agent'
@@ -15,6 +16,33 @@ export interface AgentConversationListParams {
   size?: number
   transcriptId?: string
   status?: string
+}
+
+export function getAgentProcessingWorkflows(
+  conversationId: string,
+  signal?: AbortSignal,
+) {
+  if (!isValidResourceId(conversationId)) throw new Error('会话 ID 无效')
+  return apiRequest<AgentProcessingWorkflow[]>(
+    `${AGENT_CONVERSATIONS_PATH}/${encodeURIComponent(conversationId)}/processing-workflows`,
+    { signal },
+  )
+}
+
+export function getAgentProcessingWorkflow(workflowId: string, signal?: AbortSignal) {
+  if (!isValidResourceId(workflowId)) throw new Error('处理流程 ID 无效')
+  return apiRequest<AgentProcessingWorkflow>(
+    `/api/agent/processing-workflows/${encodeURIComponent(workflowId)}`,
+    { signal },
+  )
+}
+
+export function confirmAgentProcessingWorkflow(workflowId: string, signal?: AbortSignal) {
+  if (!isValidResourceId(workflowId)) throw new Error('处理流程 ID 无效')
+  return apiRequest<AgentProcessingWorkflow>(
+    `/api/agent/processing-workflows/${encodeURIComponent(workflowId)}/confirm`,
+    { method: 'POST', signal },
+  )
 }
 
 export function createAgentConversation(

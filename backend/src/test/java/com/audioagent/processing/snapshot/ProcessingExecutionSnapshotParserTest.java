@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProcessingExecutionSnapshotParserTest {
 
@@ -54,6 +55,7 @@ class ProcessingExecutionSnapshotParserTest {
                         "ACCEPTED", 1_000, 2_000))));
         assertEquals(ErrorCode.PROCESSING_EXECUTION_UNSUPPORTED_OPERATION
                 .name(), error.getFailureCode());
+        assertTrue(error.getMessage().contains("regenerate"));
     }
 
     @Test

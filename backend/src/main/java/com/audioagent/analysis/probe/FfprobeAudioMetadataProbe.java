@@ -35,7 +35,7 @@ public class FfprobeAudioMetadataProbe implements AudioMetadataProbe {
                 "-v", "error",
                 "-select_streams", "a:0",
                 "-show_entries",
-                "stream=codec_name,sample_rate,channels,bit_rate"
+                "stream=codec_name,duration,sample_rate,channels,bit_rate"
                         + ":format=duration,format_name,bit_rate,size",
                 "-of", "json",
                 filePath.toAbsolutePath().toString()
@@ -87,7 +87,9 @@ public class FfprobeAudioMetadataProbe implements AudioMetadataProbe {
                 );
             }
 
-            return parseOutput(stdout);
+            AudioMetadata metadata = parseOutput(stdout);
+            logDiagnostics(filePath, metadata);
+            return metadata;
 
         } catch (RuntimeException e) {
             throw e;
@@ -98,7 +100,7 @@ public class FfprobeAudioMetadataProbe implements AudioMetadataProbe {
         }
     }
 
-    private AudioMetadata parseOutput(String json) {
+    AudioMetadata parseOutput(String json) {
         try {
             JsonNode root = objectMapper.readTree(json);
 
@@ -116,6 +118,8 @@ public class FfprobeAudioMetadataProbe implements AudioMetadataProbe {
             Integer channels = audioStream.has("channels")
                     ? audioStream.get("channels").asInt() : null;
             Long streamBitRate = parseLongSafe(audioStream, "bit_rate");
+            Long streamDurationMs = parseDurationSafe(
+                    audioStream, "duration");
 
             String formatName = format != null && format.has("format_name")
                     ? format.get("format_name").asText() : null;
@@ -124,16 +128,9 @@ public class FfprobeAudioMetadataProbe implements AudioMetadataProbe {
             Long fileSize = format != null
                     ? parseLongSafe(format, "size") : null;
 
-            Long durationMs = null;
-            if (format != null && format.has("duration")) {
-                BigDecimal duration = new BigDecimal(
-                        format.get("duration").asText()
-                );
-                durationMs = duration
-                        .multiply(BigDecimal.valueOf(1000))
-                        .setScale(0, RoundingMode.HALF_UP)
-                        .longValue();
-            }
+            Long formatDurationMs = parseDurationSafe(format, "duration");
+            Long durationMs = isPositive(streamDurationMs)
+                    ? streamDurationMs : formatDurationMs;
 
             Long bitRate = streamBitRate != null
                     ? streamBitRate : formatBitRate;
@@ -142,6 +139,8 @@ public class FfprobeAudioMetadataProbe implements AudioMetadataProbe {
                     .formatName(formatName)
                     .codecName(codecName)
                     .durationMs(durationMs)
+                    .formatDurationMs(formatDurationMs)
+                    .streamDurationMs(streamDurationMs)
                     .sampleRate(sampleRate)
                     .channels(channels)
                     .bitRate(bitRate)
@@ -179,5 +178,67 @@ public class FfprobeAudioMetadataProbe implements AudioMetadataProbe {
             log.debug("Failed to parse {} as long: {}", field, node.get(field).asText());
             return null;
         }
+    }
+
+    private Long parseDuration(JsonNode node, String field) {
+        if (node == null || !node.has(field) || node.get(field).isNull()) {
+            return null;
+        }
+        BigDecimal duration = new BigDecimal(node.get(field).asText());
+        return duration.multiply(BigDecimal.valueOf(1000))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
+    }
+
+    private Long parseDurationSafe(JsonNode node, String field) {
+        try {
+            return parseDuration(node, field);
+        } catch (RuntimeException e) {
+            log.debug("Failed to parse {} as duration: {}", field,
+                    node.get(field).asText());
+            return null;
+        }
+    }
+
+    private boolean isPositive(Long durationMs) {
+        return durationMs != null && durationMs > 0;
+    }
+
+    private void logDiagnostics(Path filePath, AudioMetadata metadata) {
+        String message = "Audio metadata diagnostics, fileName={}, "
+                + "extension={}, formatDurationMs={}, audioStreamDurationMs={}, "
+                + "durationMsUsedByApplication={}, formatName={}, "
+                + "codecName={}, sampleRate={}, channels={}";
+        Object[] values = {
+                safeFileName(filePath), extension(filePath),
+                metadata.getFormatDurationMs(),
+                metadata.getStreamDurationMs(), metadata.getDurationMs(),
+                metadata.getFormatName(), metadata.getCodecName(),
+                metadata.getSampleRate(), metadata.getChannels()
+        };
+        if (isPositive(metadata.getFormatDurationMs())
+                && isPositive(metadata.getStreamDurationMs())
+                && !metadata.getFormatDurationMs().equals(
+                metadata.getStreamDurationMs())) {
+            log.info(message, values);
+        } else {
+            log.debug(message, values);
+        }
+    }
+
+    private String safeFileName(Path filePath) {
+        Path fileName = filePath.getFileName();
+        if (fileName == null) {
+            return "unknown";
+        }
+        String safe = fileName.toString().replaceAll("[\\r\\n\\t]", "_");
+        return safe.length() > 120 ? safe.substring(0, 120) : safe;
+    }
+
+    private String extension(Path filePath) {
+        String fileName = safeFileName(filePath);
+        int separator = fileName.lastIndexOf('.');
+        return separator < 0 || separator == fileName.length() - 1
+                ? null : fileName.substring(separator + 1);
     }
 }

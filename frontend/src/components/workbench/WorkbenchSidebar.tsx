@@ -21,7 +21,10 @@ function Brand({ collapsed }: { collapsed: boolean }) {
 export default function WorkbenchSidebar({ collapsed, onCollapse, onNavigate }: WorkbenchSidebarProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const selectedKey = workbenchNavItems.find((item) => item.key !== '/' && location.pathname.startsWith(item.key))?.key || '/dashboard'
+  const selectedKey = location.pathname.startsWith('/analysis/tasks')
+    || location.pathname.startsWith('/processing/executions')
+    ? '/tasks'
+    : workbenchNavItems.find((item) => item.key !== '/' && location.pathname.startsWith(item.key))?.key || '/dashboard'
 
   return (
     <div className="workbench-sidebar__inner">
@@ -52,4 +55,3 @@ export default function WorkbenchSidebar({ collapsed, onCollapse, onNavigate }: 
     </div>
   )
 }
-

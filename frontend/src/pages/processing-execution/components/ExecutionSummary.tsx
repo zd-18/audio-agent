@@ -5,14 +5,9 @@ import {
   CloseCircleOutlined,
   LoadingOutlined,
 } from '@ant-design/icons'
-import { Typography } from 'antd'
 import type { ProcessingExecution } from '../../../types/processingExecution'
 import { formatDateTime } from '../../../utils/formatters'
 import { EXECUTION_STATUS_META } from '../../../utils/processingExecutionDisplay'
-
-function compactId(value: string) {
-  return value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value
-}
 
 function StatusIcon({ status }: { status: ProcessingExecution['executionStatus'] }) {
   if (status === 'SUCCESS') return <CheckCircleOutlined />
@@ -48,15 +43,6 @@ export default function ExecutionSummary({
         <div><dt>创建时间</dt><dd>{formatDateTime(execution.createdAt || undefined)}</dd></div>
         <div><dt>开始时间</dt><dd>{formatDateTime(execution.startedAt || undefined)}</dd></div>
         <div><dt>完成时间</dt><dd>{formatDateTime(execution.finishedAt || undefined)}</dd></div>
-        <div><dt>重试次数</dt><dd>{execution.retryCount}</dd></div>
-        <div className="processing-execution-summary__id">
-          <dt>执行任务 ID</dt>
-          <dd>
-            <Typography.Text copyable={{ text: execution.executionId, tooltips: ['复制执行任务 ID', '已复制'] }}>
-              {compactId(execution.executionId)}
-            </Typography.Text>
-          </dd>
-        </div>
       </dl>
     </section>
   )

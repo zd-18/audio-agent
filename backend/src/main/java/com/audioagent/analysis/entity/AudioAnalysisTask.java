@@ -18,6 +18,8 @@ public class AudioAnalysisTask {
 
     private Long audioFileId;
 
+    private Long sourceEventId;
+
     private AnalysisType analysisType;
 
     private AnalysisTaskStatus status;

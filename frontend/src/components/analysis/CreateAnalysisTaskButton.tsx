@@ -14,7 +14,7 @@ interface CreateAnalysisTaskButtonProps {
   label?: string
 }
 
-export default function CreateAnalysisTaskButton({ audioFileId, fileName, block, buttonType = 'primary', size, label = '创建分析任务' }: CreateAnalysisTaskButtonProps) {
+export default function CreateAnalysisTaskButton({ audioFileId, fileName, block, buttonType = 'primary', size, label = '开始分析' }: CreateAnalysisTaskButtonProps) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const { create, loading, error, resetError } = useCreateAnalysisTask()
@@ -27,7 +27,7 @@ export default function CreateAnalysisTaskButton({ audioFileId, fileName, block,
 
   const confirm = async () => {
     const task = await create(audioFileId)
-    if (task) navigate(`/analysis/tasks/${task.taskId}`)
+    if (task) navigate('/tasks')
   }
 
   return (
@@ -36,9 +36,9 @@ export default function CreateAnalysisTaskButton({ audioFileId, fileName, block,
         {label}
       </Button>
       <Modal
-        title="创建音频分析任务"
+        title="开始分析音频"
         open={open}
-        okText="确认创建"
+        okText="开始分析"
         cancelText="取消"
         confirmLoading={loading}
         closable={!loading}
@@ -47,12 +47,10 @@ export default function CreateAnalysisTaskButton({ audioFileId, fileName, block,
         onOk={confirm}
         onCancel={close}
       >
-        <p className="analysis-confirm-description">任务将通过异步队列执行，创建后会自动进入任务详情页。</p>
+        <p className="analysis-confirm-description">系统将在后台分析音频，开始后可在“任务进度”中查看当前阶段。</p>
         <Descriptions column={1} size="small" items={[
           { key: 'file', label: '当前文件', children: fileName || '—' },
-          { key: 'id', label: 'audioFileId', children: <span className="workbench-mono">{audioFileId}</span> },
-          { key: 'type', label: '分析类型', children: 'FULL' },
-          { key: 'queue', label: '执行方式', children: 'RabbitMQ 异步队列' },
+          { key: 'content', label: '分析内容', children: '音频质量、问题片段与处理建议' },
         ]} />
         {error && <Alert className="analysis-confirm-error" type="error" showIcon message="创建失败" description={error} />}
       </Modal>

@@ -15,13 +15,17 @@ import com.audioagent.analysis.mapper.AudioProcessingStepMapper;
 import com.audioagent.analysis.processing.ProcessingPlanContext;
 import com.audioagent.analysis.processing.ProcessingPlanDraft;
 import com.audioagent.analysis.processing.ProcessingPlanGenerator;
+import com.audioagent.analysis.processing.ProcessingOperationType;
 import com.audioagent.analysis.processing.ProcessingStepDraft;
+import com.audioagent.analysis.processing.ProcessingParameterValidator;
 import com.audioagent.analysis.service.AudioAnalysisReportService;
 import com.audioagent.analysis.service.AudioProcessingPlanService;
 import com.audioagent.analysis.vo.AudioAnalysisReportVO;
 import com.audioagent.analysis.vo.ProcessingPlanVO;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.file.entity.AudioFile;
+import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.audioagent.setting.config.UserSettingDefaults;
 import com.audioagent.setting.model.UserProcessingPreferences;
@@ -53,11 +57,41 @@ public class AudioProcessingPlanServiceImpl
     private final AudioProcessingPlanMapper planMapper;
     private final AudioProcessingStepMapper stepMapper;
     private final AudioProcessingConfirmationMapper confirmationMapper;
+    private final AudioFileMapper audioFileMapper;
     private final AudioAnalysisReportService reportService;
     private final ProcessingPlanGenerator planGenerator;
+    private final ProcessingParameterValidator parameterValidator;
     private final UserSettingService userSettingService;
     private final AnalysisProperties properties;
     private final ObjectMapper objectMapper;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ProcessingPlanVO saveAgentPlanForOwner(
+            Long userId, Long taskId, ProcessingPlanDraft draft) {
+        validateTaskId(taskId);
+        if (userId == null || userId <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "userId must be greater than 0");
+        }
+        if (!properties.getProcessingPlan().isEnabled()) {
+            throw new BusinessException(ErrorCode.PROCESSING_PLAN_NOT_READY,
+                    "Audio processing plans are disabled");
+        }
+        AudioAnalysisTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND);
+        }
+        AudioFile file = audioFileMapper.selectById(task.getAudioFileId());
+        if (task.getStatus() != AnalysisTaskStatus.SUCCESS || file == null
+                || !userId.equals(file.getUserId())
+                || Integer.valueOf(1).equals(file.getDeleted())) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_ACCESS_DENIED);
+        }
+        validateExecutableOperations(draft);
+        validateDraftParameters(draft);
+        return save(task, draft);
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -113,6 +147,7 @@ public class AudioProcessingPlanServiceImpl
                     new ProcessingPlanContext(task, result, report,
                             issues == null ? List.of() : issues,
                             preferences));
+            validateExecutableOperations(draft);
             ProcessingPlanVO saved = save(task, draft);
             long highCount = saved.getSteps().stream()
                     .filter(step -> "HIGH".equals(step.getPriority()))
@@ -244,6 +279,35 @@ public class AudioProcessingPlanServiceImpl
                     "Processing plan steps were not fully saved");
         }
         return toVO(persisted, steps);
+    }
+
+    private void validateExecutableOperations(ProcessingPlanDraft draft) {
+        if (draft == null || draft.steps() == null) {
+            throw new BusinessException(
+                    ErrorCode.PROCESSING_PLAN_DATA_INCOMPLETE,
+                    "Processing plan generation result is incomplete");
+        }
+        for (ProcessingStepDraft step : draft.steps()) {
+            ProcessingOperationType operation = step == null
+                    ? null : step.operationType();
+            if (operation == null || !operation.isExecutable()) {
+                throw new BusinessException(
+                        ErrorCode.PROCESSING_PLAN_GENERATION_FAILED,
+                        "Generated plan contains an unsupported operation: "
+                                + operation);
+            }
+        }
+    }
+
+    private void validateDraftParameters(ProcessingPlanDraft draft) {
+        for (ProcessingStepDraft source : draft.steps()) {
+            AudioProcessingStep step = new AudioProcessingStep();
+            step.setOperationType(source.operationType().name());
+            step.setStartMs(source.startMs());
+            step.setEndMs(source.endMs());
+            parameterValidator.mergeAndValidate(step, source.parameters(),
+                    Map.of());
+        }
     }
 
     private List<AudioProcessingStep> buildSteps(

@@ -370,7 +370,8 @@ public class AudioProcessingExecutionServiceImpl
                         .startMs(step.getStartMs())
                         .endMs(step.getEndMs())
                         .skipReason(step.getSkipReason())
-                        .failureMessage(step.getFailureMessage())
+                        .failureMessage(userFacingFailureMessage(
+                                step.getFailureMessage()))
                         .build()).toList();
         return ProcessingExecutionVO.builder()
                 .executionId(execution.getId())
@@ -386,13 +387,22 @@ public class AudioProcessingExecutionServiceImpl
                 .retryCount(execution.getRetryCount())
                 .resultFileId(execution.getResultFileId())
                 .failureCode(execution.getFailureCode())
-                .failureMessage(execution.getFailureMessage())
+                .failureMessage(userFacingFailureMessage(
+                        execution.getFailureMessage()))
                 .steps(steps)
                 .startedAt(execution.getStartedAt())
                 .finishedAt(execution.getFinishedAt())
                 .createdAt(execution.getCreatedAt())
                 .updatedAt(execution.getUpdatedAt())
                 .build();
+    }
+
+    private String userFacingFailureMessage(String failureMessage) {
+        if (failureMessage != null && failureMessage.startsWith(
+                "Processed audio duration is outside tolerance")) {
+            return "处理后的音频时长异常，请重新处理或检查源文件。";
+        }
+        return failureMessage;
     }
 
     private void dispatchAfterCommit(Long executionId) {

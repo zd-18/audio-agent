@@ -13,6 +13,7 @@ import com.audioagent.file.vo.AudioFileListVO;
 import com.audioagent.file.vo.AudioPlaybackUrlVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.audioagent.infrastructure.ffprobe.AudioMetadata;
 import com.audioagent.infrastructure.ffprobe.AudioMetadataService;
 import com.audioagent.infrastructure.minio.MinioProperties;
@@ -179,8 +180,13 @@ public class AudioFileServiceImpl implements AudioFileService {
             LocalDateTime now = LocalDateTime.now();
 
             AudioFile audioFile = new AudioFile();
+            audioFile.setId(IdWorker.getId());
             audioFile.setUserId(userId);
             audioFile.setSourceFileId(null);
+            audioFile.setRootAudioFileId(audioFile.getId());
+            audioFile.setVersionNo(0);
+            audioFile.setVersionSummary("原始版本");
+            audioFile.setSourceExecutionId(null);
             audioFile.setFileRole(FileRole.ORIGINAL);
             audioFile.setOriginalName(originalName);
             audioFile.setExtension(extension);

@@ -14,4 +14,10 @@ public class SendAgentMessageRequest {
     @Size(max = 64,
             message = "clientRequestId must not exceed 64 characters")
     private String clientRequestId;
+
+    /**
+     * CHAT keeps the existing transcript Q&A behavior. PROCESSING asks the
+     * Planner to create a confirmable audio-processing workflow.
+     */
+    private String mode = "CHAT";
 }

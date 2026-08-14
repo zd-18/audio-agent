@@ -1,5 +1,6 @@
 package com.audioagent.agent.vo;
 
+import com.audioagent.agent.workflow.vo.AgentProcessingWorkflowVO;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -8,4 +9,5 @@ import lombok.Getter;
 public class SendAgentMessageVO {
     private AgentMessageVO userMessage;
     private AgentMessageVO assistantMessage;
+    private AgentProcessingWorkflowVO processingWorkflow;
 }

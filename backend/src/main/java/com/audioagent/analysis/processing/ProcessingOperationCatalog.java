@@ -23,7 +23,7 @@ public class ProcessingOperationCatalog {
                               Long startMs, Long endMs) {
         return switch (type) {
             case NORMALIZE_VOLUME ->
-                    "对整段音频执行稳定的响度标准化，并生成新的结果文件。";
+                    "对整段音频执行稳定的响度标准化，并按目标真峰值限制过高峰值。";
             case TRIM_SEGMENT -> "裁剪" + range(startMs, endMs)
                     + "，该时间范围将从结果音频中移除。";
             case REVIEW_SILENCE -> "建议试听" + range(startMs, endMs)
@@ -46,7 +46,7 @@ public class ProcessingOperationCatalog {
     public String reason(ProcessingOperationType type) {
         return switch (type) {
             case NORMALIZE_VOLUME ->
-                    "整段音频响度偏离建议范围，需要统一音量。";
+                    "整段音频响度或峰值偏离建议范围，需要统一音量并控制真峰值。";
             case TRIM_SEGMENT ->
                     "该时间范围需要从结果音频中裁剪。";
             case REVIEW_SILENCE ->

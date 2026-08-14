@@ -8,10 +8,12 @@ import com.audioagent.common.enums.FileRole;
 import com.audioagent.common.enums.FileStatus;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.file.mapper.AudioFileMapper;
+import com.audioagent.file.service.AudioVersionSummaryBuilder;
 import com.audioagent.infrastructure.minio.MinioProperties;
 import com.audioagent.infrastructure.minio.MinioStorageService;
 import com.audioagent.processing.entity.AudioProcessingExecution;
 import com.audioagent.processing.entity.AudioProcessingExecutionStep;
+import com.audioagent.processing.critic.ProcessingResultCritic;
 import com.audioagent.processing.exception.ProcessingExecutionErrorClassifier;
 import com.audioagent.processing.exception.ProcessingExecutionException;
 import com.audioagent.processing.mapper.AudioProcessingExecutionMapper;
@@ -54,11 +56,13 @@ public class AudioProcessingExecutionExecutor {
     private final AudioProcessingExecutionMapper executionMapper;
     private final AudioProcessingExecutionStepMapper executionStepMapper;
     private final AudioFileMapper audioFileMapper;
+    private final AudioVersionSummaryBuilder versionSummaryBuilder;
     private final MinioStorageService storageService;
     private final MinioProperties minioProperties;
     private final AudioProcessingPipeline pipeline;
     private final AudioMetadataProbe metadataProbe;
     private final ProcessingOutputValidator outputValidator;
+    private final ProcessingResultCritic resultCritic;
     private final ProcessingExecutionWorkDirectory workDirectories;
     private final ProcessingExecutionErrorClassifier errorClassifier;
     private final ObjectMapper objectMapper;
@@ -96,6 +100,14 @@ public class AudioProcessingExecutionExecutor {
                             step.getExecutionStatus()))
                     .map(this::toExecutable)
                     .toList();
+            if (steps.stream().anyMatch(step -> step.operationType()
+                    == ProcessingOperationType.NORMALIZE_VOLUME)) {
+                log.info("Source audio identity diagnostics, executionId={}, "
+                                + "originalFileName={}, extension={}",
+                        executionId,
+                        safeDiagnosticFileName(source.getOriginalName()),
+                        safeDiagnosticExtension(source.getExtension()));
+            }
             int processingSteps = executionStepMapper
                     .markExecutableProcessing(executionId,
                             LocalDateTime.now());
@@ -113,8 +125,34 @@ public class AudioProcessingExecutionExecutor {
                     ProcessingExecutionStage.METADATA_EXTRACTING.name(), 85,
                     LocalDateTime.now());
             AudioMetadata metadata = probeResult(output.path());
-            outputValidator.validateMetadata(metadata,
-                    output.expectedDurationMs());
+            Long actualDurationMs = metadata == null
+                    ? null : metadata.getDurationMs();
+            Long differenceMs = actualDurationMs == null ? null
+                    : Math.abs(actualDurationMs
+                    - output.expectedDurationMs());
+            long toleranceMs = outputValidator.durationToleranceMs();
+            log.info("Processed audio duration diagnostics, executionId={}, "
+                            + "expectedDurationMs={}, actualDurationMs={}, "
+                            + "differenceMs={}, toleranceMs={}, sampleRate={}, "
+                            + "channels={}",
+                    executionId, output.expectedDurationMs(),
+                    actualDurationMs, differenceMs, toleranceMs,
+                    metadata == null ? null : metadata.getSampleRate(),
+                    metadata == null ? null : metadata.getChannels());
+            int successfulSteps = executionStepMapper
+                    .markProcessingSuccess(executionId, LocalDateTime.now());
+            if (successfulSteps != execution.getExecutableStepCount()) {
+                throw new ProcessingExecutionException(
+                        ErrorCode.PROCESSING_EXECUTION_FAILED, false,
+                        "Not all processing steps completed successfully");
+            }
+            executionMapper.advance(executionId,
+                    ProcessingExecutionStage.REVIEWING.name(), 88,
+                    LocalDateTime.now());
+            resultCritic.review(output.path(), metadata,
+                    output.expectedDurationMs(), executionStepMapper
+                            .selectByExecutionId(executionId),
+                    execution.getAcceptedStepCount());
             executionMapper.advance(executionId,
                     ProcessingExecutionStage.UPLOADING.name(), 90,
                     LocalDateTime.now());
@@ -126,7 +164,7 @@ public class AudioProcessingExecutionExecutor {
             String finalObjectKey = uploadedObjectKey;
             Boolean committed = transactionTemplate.execute(status ->
                     persistResult(finalExecution, source, metadata, result,
-                            finalObjectKey));
+                            finalObjectKey, storedSteps));
             if (!Boolean.TRUE.equals(committed)) {
                 throw new ProcessingExecutionException(
                         ErrorCode.PROCESSING_EXECUTION_FAILED,
@@ -209,12 +247,19 @@ public class AudioProcessingExecutionExecutor {
         }
         for (AudioProcessingExecutionStep step : steps) {
             if (step.getId() == null || step.getStepOrder() == null
-                    || !("NORMALIZE_VOLUME".equals(step.getOperationType())
-                    || "TRIM_SEGMENT".equals(step.getOperationType()))
+                    || !isExecutableOperation(step.getOperationType())
                     || !"PENDING".equals(step.getExecutionStatus())) {
                 throw invalidSnapshot(
                         "Execution step snapshot contains an invalid state");
             }
+        }
+    }
+
+    private boolean isExecutableOperation(String value) {
+        try {
+            return ProcessingOperationType.valueOf(value).isExecutable();
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -297,7 +342,8 @@ public class AudioProcessingExecutionExecutor {
                                   AudioFile source,
                                   AudioMetadata metadata,
                                   ResultFileData result,
-                                  String objectKey) {
+                                  String objectKey,
+                                  List<AudioProcessingExecutionStep> steps) {
         AudioProcessingExecution current = executionMapper
                 .selectExecutionById(execution.getId());
         if (current == null || current.getResultFileId() != null
@@ -305,11 +351,37 @@ public class AudioProcessingExecutionExecutor {
                 current.getExecutionStatus())) {
             return false;
         }
+        AudioFile existing = audioFileMapper.selectBySourceExecutionId(
+                execution.getId());
+        if (existing != null) {
+            return executionMapper.complete(execution.getId(),
+                    existing.getId(), LocalDateTime.now()) == 1;
+        }
+        Long rootAudioFileId = source.getRootAudioFileId() == null
+                ? source.getId() : source.getRootAudioFileId();
+        AudioFile root = audioFileMapper.selectByIdForUpdate(
+                rootAudioFileId);
+        if (root == null || !source.getUserId().equals(root.getUserId())) {
+            throw new ProcessingExecutionException(
+                    ErrorCode.PROCESSING_EXECUTION_FAILED,
+                    false, "Audio version root is invalid");
+        }
+        Integer versionNo = audioFileMapper.selectNextVersionNo(
+                rootAudioFileId);
+        if (versionNo == null || versionNo <= 0) {
+            throw new ProcessingExecutionException(
+                    ErrorCode.PROCESSING_EXECUTION_FAILED,
+                    false, "Audio version number could not be allocated");
+        }
         LocalDateTime now = LocalDateTime.now();
         AudioFile file = new AudioFile();
         file.setId(IdWorker.getId());
         file.setUserId(source.getUserId());
         file.setSourceFileId(source.getId());
+        file.setRootAudioFileId(rootAudioFileId);
+        file.setVersionNo(versionNo);
+        file.setVersionSummary(versionSummaryBuilder.build(steps));
+        file.setSourceExecutionId(execution.getId());
         file.setFileRole(FileRole.REPAIR_RESULT);
         file.setOriginalName(resultName(source.getOriginalName(),
                 execution.getId()));
@@ -333,13 +405,6 @@ public class AudioProcessingExecutionExecutor {
             throw new ProcessingExecutionException(
                     ErrorCode.PROCESSING_EXECUTION_FAILED,
                     true, "Processed result metadata could not be saved");
-        }
-        int successfulSteps = executionStepMapper.markProcessingSuccess(
-                execution.getId(), now);
-        if (successfulSteps != execution.getExecutableStepCount()) {
-            throw new ProcessingExecutionException(
-                    ErrorCode.PROCESSING_EXECUTION_FAILED,
-                    true, "Execution step results could not be saved");
         }
         return true;
     }
@@ -365,6 +430,25 @@ public class AudioProcessingExecutionExecutor {
         String id = executionId.toString();
         String shortId = id.substring(Math.max(0, id.length() - 8));
         return safe + "-repaired-" + shortId + ".wav";
+    }
+
+    private String safeDiagnosticFileName(String originalName) {
+        if (originalName == null || originalName.isBlank()) {
+            return "unknown";
+        }
+        String normalized = originalName.replace('\\', '/');
+        String fileName = normalized.substring(normalized.lastIndexOf('/') + 1)
+                .replaceAll("[\\r\\n\\t]", "_");
+        return fileName.length() > 120
+                ? fileName.substring(0, 120) : fileName;
+    }
+
+    private String safeDiagnosticExtension(String extension) {
+        if (extension == null || extension.isBlank()) {
+            return null;
+        }
+        String safe = extension.replaceAll("[^A-Za-z0-9]", "");
+        return safe.length() > 20 ? safe.substring(0, 20) : safe;
     }
 
     private Integer toInteger(Long value) {

@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: audio-agent-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+
   minio:
     image: minio/minio:latest
     container_name: audio-agent-minio
@@ -19,3 +29,4 @@ services:
 
 volumes:
   minio-data:
+  redis-data:

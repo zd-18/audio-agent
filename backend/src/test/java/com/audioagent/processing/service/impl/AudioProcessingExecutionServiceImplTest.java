@@ -190,6 +190,32 @@ class AudioProcessingExecutionServiceImplTest {
     }
 
     @Test
+    void queryHidesPersistedDurationDiagnosticsFromUsers() {
+        String internalMessage = "Processed audio duration is outside "
+                + "tolerance: expectedDurationMs=79931, "
+                + "actualDurationMs=76558, differenceMs=3373, "
+                + "toleranceMs=1000";
+        AudioProcessingExecution execution = execution("FAILED", 7L);
+        execution.setFailureCode(
+                ErrorCode.PROCESSING_EXECUTION_OUTPUT_INVALID.name());
+        execution.setFailureMessage(internalMessage);
+        AudioProcessingExecutionStep step =
+                new AudioProcessingExecutionStep();
+        step.setFailureMessage(internalMessage);
+        when(executionMapper.selectExecutionById(execution.getId()))
+                .thenReturn(execution);
+        when(stepMapper.selectByExecutionId(execution.getId()))
+                .thenReturn(List.of(step));
+
+        ProcessingExecutionVO result = service.get(7L, execution.getId());
+
+        assertEquals("处理后的音频时长异常，请重新处理或检查源文件。",
+                result.getFailureMessage());
+        assertEquals("处理后的音频时长异常，请重新处理或检查源文件。",
+                result.getSteps().getFirst().getFailureMessage());
+    }
+
+    @Test
     void otherUserCannotQueryExecution() {
         AudioProcessingExecution execution = execution("SUCCESS", 8L);
         when(executionMapper.selectExecutionById(execution.getId()))

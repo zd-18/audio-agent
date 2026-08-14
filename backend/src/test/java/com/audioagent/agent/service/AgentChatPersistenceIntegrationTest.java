@@ -49,6 +49,7 @@ import static org.mockito.Mockito.when;
         "audio-agent.ai.deepseek.enabled=false",
         "audio.analysis.dispatch-mode=local",
         "audio.processing.enabled=false",
+        "minio.secret-key=test-secret-key",
         "mybatis-plus.configuration.map-underscore-to-camel-case=true"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -81,6 +82,7 @@ class AgentChatPersistenceIntegrationTest {
     @BeforeEach
     void resetDatabase() {
         reset(aiChatClient);
+        jdbcTemplate.update("DELETE FROM agent_processing_workflow");
         jdbcTemplate.update("DELETE FROM agent_message_citation");
         jdbcTemplate.update("DELETE FROM agent_message");
         jdbcTemplate.update("DELETE FROM agent_conversation");

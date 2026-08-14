@@ -6,6 +6,7 @@ public enum ProcessingExecutionStage {
     TRIMMING,
     LOUDNESS_NORMALIZING,
     PEAK_LIMITING,
+    REVIEWING,
     UPLOADING,
     METADATA_EXTRACTING,
     COMPLETED

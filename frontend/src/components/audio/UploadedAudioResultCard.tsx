@@ -6,7 +6,7 @@ import { formatBytes, formatDuration } from '../../utils/formatters'
 import CreateAnalysisTaskButton from '../analysis/CreateAnalysisTaskButton'
 import CreateTranscriptionButton from '../transcription/CreateTranscriptionButton'
 
-export default function UploadedAudioResultCard({ result, onContinue }: { result: AudioFileRecord; onContinue: () => void }) {
+export default function UploadedAudioResultCard({ result, instantUpload = false, onContinue }: { result: AudioFileRecord; instantUpload?: boolean; onContinue: () => void }) {
   const entries = [
     ['文件 ID', result.fileId],
     ['文件名称', result.originalName],
@@ -20,7 +20,7 @@ export default function UploadedAudioResultCard({ result, onContinue }: { result
 
   return (
     <section className="audio-upload-result" aria-labelledby="upload-result-title">
-      <div className="audio-upload-result__heading"><CheckCircleFilled /><div><span>UPLOAD COMPLETE</span><h3 id="upload-result-title">音频上传成功</h3><p>后端已接收并完成文件元数据处理。</p></div></div>
+      <div className="audio-upload-result__heading"><CheckCircleFilled /><div><span>UPLOAD COMPLETE</span><h3 id="upload-result-title">{instantUpload ? '文件已存在，已完成上传' : '音频上传成功'}</h3><p>{instantUpload ? '已找到内容相同的文件，无需重复上传。' : '文件已完成完整性校验并安全保存。'}</p></div></div>
       <Descriptions column={{ xs: 1, sm: 2 }} items={entries.map(([label, children]) => ({ key: String(label), label, children: String(children) }))} />
       <div className="audio-upload-result__actions">
         <CreateAnalysisTaskButton audioFileId={result.fileId} fileName={result.originalName} buttonType="default" />

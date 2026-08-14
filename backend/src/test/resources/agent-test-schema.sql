@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS agent_processing_workflow;
 DROP TABLE IF EXISTS agent_message_citation;
 DROP TABLE IF EXISTS agent_message;
 DROP TABLE IF EXISTS agent_conversation;
@@ -9,6 +10,10 @@ CREATE TABLE audio_file (
     id BIGINT NOT NULL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     source_file_id BIGINT,
+    root_audio_file_id BIGINT,
+    version_no INT NOT NULL DEFAULT 0,
+    version_summary VARCHAR(200),
+    source_execution_id BIGINT,
     file_role INT,
     original_name VARCHAR(255),
     extension VARCHAR(32),
@@ -111,4 +116,25 @@ CREATE TABLE agent_message_citation (
     created_at TIMESTAMP NOT NULL,
     CONSTRAINT uk_agent_citation_order
         UNIQUE (message_id, citation_order)
+);
+
+CREATE TABLE agent_processing_workflow (
+    id BIGINT NOT NULL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    conversation_id BIGINT NOT NULL,
+    user_message_id BIGINT NOT NULL,
+    assistant_message_id BIGINT NOT NULL,
+    task_id BIGINT NOT NULL,
+    audio_file_id BIGINT NOT NULL,
+    plan_id BIGINT,
+    confirmation_id BIGINT,
+    execution_id BIGINT,
+    result_file_id BIGINT,
+    workflow_status VARCHAR(32) NOT NULL,
+    failure_reason VARCHAR(500),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    finished_at TIMESTAMP,
+    CONSTRAINT uk_agent_workflow_user_message UNIQUE (user_message_id),
+    CONSTRAINT uk_agent_workflow_execution UNIQUE (execution_id)
 );

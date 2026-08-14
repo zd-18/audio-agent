@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import type { AudioFileRecord } from '../../../types/api'
 import type { ProcessingExecution } from '../../../types/processingExecution'
@@ -55,16 +56,18 @@ function file(id: string, name: string): AudioFileRecord {
 describe('ExecutionResult', () => {
   it('connects the source and result files to the comparison player', () => {
     render(
-      <ExecutionResult
-        execution={execution}
-        sourceFile={file('2001', 'source.wav')}
-        resultFile={file('2002', 'result.wav')}
-        resultLoading={false}
-        resultError={null}
-        downloading={false}
-        onRefreshResult={vi.fn()}
-        onDownload={vi.fn()}
-      />,
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ExecutionResult
+          execution={execution}
+          sourceFile={file('2001', 'source.wav')}
+          resultFile={file('2002', 'result.wav')}
+          resultLoading={false}
+          resultError={null}
+          downloading={false}
+          onRefreshResult={vi.fn()}
+          onDownload={vi.fn()}
+        />
+      </MemoryRouter>,
     )
 
     expect(screen.getByText('处理完成')).toBeInTheDocument()

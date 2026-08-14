@@ -71,4 +71,43 @@ describe('ProcessingExecutionEntry', () => {
     expect(createMock).toHaveBeenCalledWith('6001', expect.any(AbortSignal))
     resolveRequest()
   })
+
+  it('requires regeneration for an accepted legacy operation', async () => {
+    const onRegenerate = vi.fn()
+    const legacyConfirmation: ProcessingConfirmation = {
+      ...confirmation,
+      steps: [{
+        stepConfirmationId: '7001',
+        sourceStepId: '4001',
+        stepOrder: 1,
+        operationType: 'LIMIT_PEAK',
+        title: '控制过高峰值',
+        decision: 'ACCEPTED',
+        userConfirmed: true,
+        requiresConfirmation: true,
+        startMs: null,
+        endMs: null,
+        originalParameters: { truePeakLimitDbfs: -1 },
+        parameterOverrides: {},
+        effectiveParameters: { truePeakLimitDbfs: -1 },
+        userNote: null,
+      }],
+    }
+    render(
+      <AntdApp>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ProcessingExecutionEntry
+            confirmation={legacyConfirmation}
+            onRegenerate={onRegenerate}
+          />
+        </MemoryRouter>
+      </AntdApp>,
+    )
+
+    expect(screen.getByText('当前确认基于旧版处理方案')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^开始处理$/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '重新生成处理方案' }))
+    expect(onRegenerate).toHaveBeenCalledTimes(1)
+    expect(createMock).not.toHaveBeenCalled()
+  })
 })

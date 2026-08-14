@@ -8,7 +8,9 @@ import com.audioagent.auth.controller.AuthController;
 import com.audioagent.auth.service.AuthService;
 import com.audioagent.common.exception.GlobalExceptionHandler;
 import com.audioagent.file.controller.AudioFileController;
+import com.audioagent.file.multipart.MultipartUploadService;
 import com.audioagent.file.service.AudioFileService;
+import com.audioagent.file.service.AudioVersionService;
 import com.audioagent.infrastructure.minio.MinioStorageService;
 import com.audioagent.setting.controller.UserSettingController;
 import com.audioagent.setting.service.UserSettingService;
@@ -41,6 +43,10 @@ class SaTokenProtectionTest {
     private AuthService authService;
     @MockitoBean
     private AudioFileService audioFileService;
+    @MockitoBean
+    private MultipartUploadService multipartUploadService;
+    @MockitoBean
+    private AudioVersionService audioVersionService;
     @MockitoBean
     private MinioStorageService minioStorageService;
     @MockitoBean

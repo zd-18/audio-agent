@@ -46,7 +46,7 @@ public class RuleBasedProcessingPlanGenerator
                 candidates.add(trim);
             }
         }
-        addNormalizeStep(context.report(), candidates);
+        addNormalizeStep(context.report(), candidates, preferences);
 
         List<ProcessingStepDraft> deduplicated = deduplicate(candidates);
         deduplicated.sort(stepComparator());
@@ -98,14 +98,20 @@ public class RuleBasedProcessingPlanGenerator
 
     private void addNormalizeStep(
             AudioAnalysisReportVO report,
-            List<ProcessingStepDraft> candidates) {
+            List<ProcessingStepDraft> candidates,
+            UserProcessingPreferences preferences) {
         if (report == null || report.getLoudnessOverview() == null) {
             return;
         }
         String loudnessLevel = report.getLoudnessOverview()
                 .getLoudnessLevel();
-        if (!"LOW".equalsIgnoreCase(loudnessLevel)
-                && !"HIGH".equalsIgnoreCase(loudnessLevel)) {
+        boolean loudnessNeedsNormalization =
+                "LOW".equalsIgnoreCase(loudnessLevel)
+                || "HIGH".equalsIgnoreCase(loudnessLevel);
+        boolean peakNeedsNormalization = preferences.autoLimitPeak()
+                && "RISK".equalsIgnoreCase(report.getLoudnessOverview()
+                .getPeakRisk());
+        if (!loudnessNeedsNormalization && !peakNeedsNormalization) {
             return;
         }
         Map<String, Object> parameters = new LinkedHashMap<>();

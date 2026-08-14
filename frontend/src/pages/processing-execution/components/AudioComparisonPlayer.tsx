@@ -13,6 +13,7 @@ interface AudioComparisonPlayerProps {
   sourceFileName?: string | null
   resultFileName?: string | null
   resultDurationMs?: number | null
+  resultVersionLabel?: string
   downloading: boolean
   onDownload: (fileId: string, fileName: string) => void
 }
@@ -23,6 +24,7 @@ export default function AudioComparisonPlayer({
   sourceFileName,
   resultFileName,
   resultDurationMs,
+  resultVersionLabel = '修复结果',
   downloading,
   onDownload,
 }: AudioComparisonPlayerProps) {
@@ -56,16 +58,16 @@ export default function AudioComparisonPlayer({
       <div className="processing-execution-section-heading processing-audio-comparison__heading">
         <div>
           <span>A/B LISTENING</span>
-          <h2 id="processing-audio-comparison-title">原音频与修复结果对比</h2>
-          <p>当前播放：{activeKind === 'source' ? '原始音频' : '修复结果'}。切换时不会同时播放两条音频。</p>
+          <h2 id="processing-audio-comparison-title">处理前后版本对比</h2>
+          <p>当前播放：{activeKind === 'source' ? '本次处理输入' : resultVersionLabel}。切换时不会同时播放两条音频。</p>
         </div>
         <div className="processing-audio-comparison__switches">
           <Segmented<AudioKind>
             aria-label="选择试听音频"
             value={activeKind}
             options={[
-              { label: '原始音频', value: 'source' },
-              { label: '修复结果', value: 'result' },
+              { label: '本次处理输入', value: 'source' },
+              { label: resultVersionLabel, value: 'result' },
             ]}
             onChange={switchTo}
           />
@@ -78,9 +80,9 @@ export default function AudioComparisonPlayer({
       <ReportAudioPlayer
         key={activeFileId}
         sectionId="processing-comparison-player"
-        eyebrow={activeKind === 'source' ? 'ORIGINAL AUDIO' : 'REPAIRED RESULT'}
+        eyebrow={activeKind === 'source' ? 'PROCESSING INPUT' : 'SELECTED VERSION'}
         player={player}
-        fallbackFileName={activeName || `${activeKind === 'source' ? '原始音频' : '修复结果'} ${activeFileId}`}
+        fallbackFileName={activeName || (activeKind === 'source' ? '本次处理输入' : resultVersionLabel)}
         downloading={downloading}
         onDownload={() => onDownload(activeFileId, activeName || `audio-${activeFileId}`)}
       />
