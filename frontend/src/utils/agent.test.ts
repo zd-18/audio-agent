@@ -33,6 +33,7 @@ function conversation(
   return {
     conversationId,
     transcriptId,
+    audioFileId: null,
     title: '测试对话',
     status,
     modelName: 'test-model',
@@ -67,9 +68,35 @@ describe('Agent message utilities', () => {
       conversation('2084462342950039554', '2084176870403137537', 'ACTIVE', '2026-08-04T10:00:00'),
       conversation('2084462342950039555', '2084176870403137538', 'ACTIVE', '2026-08-04T11:00:00'),
       conversation('2084462342950039556', '2084176870403137537', 'ARCHIVED', '2026-08-04T12:00:00'),
-    ], '2084176870403137537')
+    ], '2084176870403137537', 'transcriptId')
 
     expect(selected?.conversationId).toBe('2084462342950039554')
     expect(typeof selected?.conversationId).toBe('string')
+  })
+
+  it('selects the newest active conversation for the exact audio file string', () => {
+    const audio = (conversationId: string, audioFileId: string, createdAt: string) => ({
+      conversationId,
+      transcriptId: null,
+      audioFileId,
+      title: '处理会话',
+      status: 'ACTIVE' as const,
+      modelName: 'model',
+      promptVersion: 'v1',
+      lastMessageId: null,
+      lastMessageAt: null,
+      audioFileName: null,
+      audioDurationMs: null,
+      createdAt,
+      updatedAt: createdAt,
+    })
+    const selected = selectLatestActiveConversation([
+      audio('1', '9', '2026-08-04T09:00:00'),
+      audio('2', '9', '2026-08-04T10:00:00'),
+      audio('3', '10', '2026-08-04T11:00:00'),
+    ], '9', 'audioFileId')
+
+    expect(selected?.conversationId).toBe('2')
+    expect(selectLatestActiveConversation([], '9', 'audioFileId')).toBeNull()
   })
 })

@@ -3,6 +3,7 @@ package com.audioagent.processing.pipeline;
 import com.audioagent.analysis.process.ExternalProcessExecutor;
 import com.audioagent.analysis.process.ProcessBuilderExternalProcessStarter;
 import com.audioagent.analysis.processing.ProcessingOperationType;
+import com.audioagent.analysis.silence.SilenceDetectOutputParser;
 import com.audioagent.analysis.probe.AudioMetadata;
 import com.audioagent.analysis.probe.FfprobeAudioMetadataProbe;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
@@ -58,6 +59,10 @@ class AudioProcessingPipelineIntegrationTest {
         outputValidator = new ProcessingOutputValidator(processing);
         pipeline = new AudioProcessingPipeline(
                 new SilenceTrimProcessor(commands,
+                        new SilenceTrimPlanner()),
+                new SilenceCleanupProcessor(commands,
+                        new LongSilenceDetector(commands,
+                                new SilenceDetectOutputParser(), analysis),
                         new SilenceTrimPlanner()),
                 new DenoiseProcessor(commands, processing),
                 new LoudnessNormalizeProcessor(commands,
@@ -175,6 +180,78 @@ class AudioProcessingPipelineIntegrationTest {
     }
 
     @Test
+    void compressLongSilenceKeepsShortNaturalPauses() throws Exception {
+        Path source = tempDirectory.resolve("pauses-source.wav");
+        generateAudioWithSilentPauses(source);
+        String sourceHash = sha256(source);
+
+        ProcessingOutput output = pipeline.execute(source, List.of(
+                step(1, ProcessingOperationType.SILENCE_CLEANUP,
+                        null, null, Map.of("mode", "COMPRESS",
+                                "minSilenceMs", 3_000,
+                                "keepSilenceMs", 800))),
+                tempDirectory);
+        AudioMetadata resultMetadata = metadataProbe.probe(output.path());
+
+        // 波形：声音0-2s、静音2-5s、声音5-7s、静音7-11s、声音11-13s。
+        // COMPRESS 每段静音只保留 0.8s：移除 2.2s + 3.2s = 5.4s。
+        assertEquals(7_600L, output.expectedDurationMs());
+        assertTrue(Math.abs(resultMetadata.getDurationMs() - 7_600L)
+                <= 100L, "actual duration="
+                + resultMetadata.getDurationMs());
+        outputValidator.validateMetadata(resultMetadata,
+                output.expectedDurationMs());
+        assertEquals(sourceHash, sha256(source));
+    }
+
+    @Test
+    void removeLongSilenceDeletesPausesEntirely() throws Exception {
+        Path source = tempDirectory.resolve("pauses-remove-source.wav");
+        generateAudioWithSilentPauses(source);
+
+        ProcessingOutput output = pipeline.execute(source, List.of(
+                step(1, ProcessingOperationType.SILENCE_CLEANUP,
+                        null, null, Map.of("mode", "REMOVE",
+                                "minSilenceMs", 3_000,
+                                "keepSilenceMs", 800))),
+                tempDirectory);
+        AudioMetadata resultMetadata = metadataProbe.probe(output.path());
+
+        // REMOVE 删除全部长静音：移除 3s + 4s = 7s。
+        assertEquals(6_000L, output.expectedDurationMs());
+        assertTrue(Math.abs(resultMetadata.getDurationMs() - 6_000L)
+                <= 100L, "actual duration="
+                + resultMetadata.getDurationMs());
+        outputValidator.validateMetadata(resultMetadata,
+                output.expectedDurationMs());
+    }
+
+    @Test
+    void silenceCleanupCombinedWithTrimAndNormalize() throws Exception {
+        Path source = tempDirectory.resolve("pauses-combined-source.wav");
+        generateAudioWithSilentPauses(source);
+
+        ProcessingOutput output = pipeline.execute(source, List.of(
+                step(1, ProcessingOperationType.TRIM_SEGMENT,
+                        500L, 1_500L, Map.of()),
+                step(2, ProcessingOperationType.SILENCE_CLEANUP,
+                        null, null, Map.of("mode", "REMOVE",
+                                "minSilenceMs", 3_000,
+                                "keepSilenceMs", 800)),
+                step(3, ProcessingOperationType.NORMALIZE_VOLUME,
+                        null, null, Map.of("targetLufs", -16,
+                                "truePeakLimitDbfs", -1))),
+                tempDirectory);
+        AudioMetadata resultMetadata = metadataProbe.probe(output.path());
+
+        // 先裁剪 1s，再删除全部长静音（裁剪后静音区间仍完整保留：
+        // 2-5s 与 7-11s 不重叠），预期 13s - 1s - 7s = 5s。
+        assertEquals(5_000L, output.expectedDurationMs());
+        outputValidator.validateMetadata(resultMetadata,
+                output.expectedDurationMs());
+    }
+
+    @Test
     void normalizeVolumeUsesAudioStreamDurationAsExpectedDuration()
             throws Exception {
         Path source = tempDirectory.resolve("normalize-video.mp4");
@@ -223,6 +300,18 @@ class AudioProcessingPipelineIntegrationTest {
                 "-f", "lavfi", "-i",
                 "anoisesrc=d=5:r=48000:a=0.4",
                 "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest",
+                "-c:a", "pcm_s16le", output.toString());
+    }
+
+    /** 13 秒波形：声音 0-2s、静音 2-5s、声音 5-7s、静音 7-11s、声音 11-13s。 */
+    private void generateAudioWithSilentPauses(Path output)
+            throws Exception {
+        runFfmpeg("-f", "lavfi", "-i",
+                "aevalsrc='if(lt(t,2),0.5*sin(2*PI*440*t),"
+                        + "if(lt(t,5),0,"
+                        + "if(lt(t,7),0.5*sin(2*PI*880*t),"
+                        + "if(lt(t,11),0,0.5*sin(2*PI*440*t)))))'"
+                        + ":d=13:s=48000",
                 "-c:a", "pcm_s16le", output.toString());
     }
 

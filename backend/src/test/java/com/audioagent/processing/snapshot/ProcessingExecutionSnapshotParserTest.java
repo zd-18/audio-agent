@@ -40,8 +40,7 @@ class ProcessingExecutionSnapshotParserTest {
     @Test
     void acceptsNormalizeVolumeWithSafeParameters() throws Exception {
         ProcessingExecutionSnapshot result = parse(List.of(normalize(1,
-                Map.of("targetLufs", -16,
-                        "truePeakLimitDbfs", -1))));
+                Map.of("targetLufs", -16))));
 
         assertEquals("NORMALIZE_VOLUME",
                 result.acceptedSteps().getFirst().operationType());
@@ -85,6 +84,32 @@ class ProcessingExecutionSnapshotParserTest {
                 result.acceptedSteps().getFirst().operationType());
         assertEquals("MEDIUM", result.acceptedSteps().getFirst()
                 .effectiveParameters().get("strength"));
+    }
+
+    @Test
+    void acceptsSilenceCleanupCompressWithoutTargetLufs() throws Exception {
+        ProcessingExecutionSnapshot result = parse(List.of(step(1,
+                "SILENCE_CLEANUP", "ACCEPTED", null, null,
+                Map.of("mode", "COMPRESS", "minSilenceMs", 3000,
+                        "keepSilenceMs", 800))));
+
+        assertEquals("SILENCE_CLEANUP",
+                result.acceptedSteps().getFirst().operationType());
+        assertEquals(false, result.acceptedSteps().getFirst()
+                .effectiveParameters().containsKey("targetLufs"));
+    }
+
+    @Test
+    void acceptsSilenceCleanupRemoveWithoutTargetLufsOrKeepSilence()
+            throws Exception {
+        ProcessingExecutionSnapshot result = parse(List.of(step(1,
+                "SILENCE_CLEANUP", "ACCEPTED", null, null,
+                Map.of("mode", "REMOVE", "minSilenceMs", 3000))));
+
+        assertEquals("SILENCE_CLEANUP",
+                result.acceptedSteps().getFirst().operationType());
+        assertEquals(false, result.acceptedSteps().getFirst()
+                .effectiveParameters().containsKey("targetLufs"));
     }
 
     @Test

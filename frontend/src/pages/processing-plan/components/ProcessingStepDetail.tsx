@@ -61,7 +61,7 @@ export default function ProcessingStepDetail({
       <header className="processing-step-detail__header">
         <div>
           <span className="processing-step-detail__eyebrow">步骤 {String(step.stepOrder).padStart(2, '0')}</span>
-          <h2 id={`processing-step-${step.stepId}`}>{getOperationLabel(step.operationType, step.title)}</h2>
+          <h2 id={`processing-step-${step.stepId}`}>{getOperationLabel(step.operationType, step.title, step)}</h2>
           <p>{step.description || '当前步骤未提供额外说明。'}</p>
         </div>
         <div className="processing-step-detail__labels">

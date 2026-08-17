@@ -22,9 +22,10 @@ public class ProcessingExecutionSnapshotParser {
             BigDecimal.valueOf(-24);
     private static final BigDecimal MAX_TARGET_LUFS =
             BigDecimal.valueOf(-8);
-    private static final BigDecimal MIN_TRUE_PEAK_DBFS =
-            BigDecimal.valueOf(-6);
-    private static final BigDecimal MAX_TRUE_PEAK_DBFS = BigDecimal.ZERO;
+    private static final BigDecimal MIN_SILENCE_MS = BigDecimal.valueOf(1000);
+    private static final BigDecimal MAX_SILENCE_MS = BigDecimal.valueOf(60000);
+    private static final BigDecimal MIN_KEEP_SILENCE_MS = BigDecimal.valueOf(100);
+    private static final BigDecimal MAX_KEEP_SILENCE_MS = BigDecimal.valueOf(3000);
 
     private final ObjectMapper objectMapper;
 
@@ -75,14 +76,14 @@ public class ProcessingExecutionSnapshotParser {
                 throw invalidParameter(
                         "Effective parameters contain invalid values");
             }
-            if (operation == ProcessingOperationType.TRIM_SEGMENT) {
-                requireRange(step);
-            } else {
-                if (operation == ProcessingOperationType.DENOISE) {
-                    validateDenoiseStrength(parameters);
-                } else {
-                    validateNormalization(parameters);
-                }
+            switch (operation) {
+                case TRIM_SEGMENT -> requireRange(step);
+                case NORMALIZE_VOLUME -> validateNormalization(parameters);
+                case DENOISE -> validateDenoiseStrength(parameters);
+                case SILENCE_CLEANUP -> validateSilenceCleanup(parameters);
+                default -> throw unsupported(operation.name());
+            }
+            if (operation != ProcessingOperationType.TRIM_SEGMENT) {
                 wholeAudioCount += 1;
                 if (wholeAudioCount > 1) {
                     throw invalidParameter(
@@ -117,9 +118,6 @@ public class ProcessingExecutionSnapshotParser {
     private void validateNormalization(Map<String, Object> parameters) {
         inRange(number(parameters, "targetLufs"), MIN_TARGET_LUFS,
                 MAX_TARGET_LUFS, "targetLufs");
-        inRange(number(parameters, "truePeakLimitDbfs"),
-                MIN_TRUE_PEAK_DBFS, MAX_TRUE_PEAK_DBFS,
-                "truePeakLimitDbfs");
     }
 
     private void validateDenoiseStrength(Map<String, Object> parameters) {
@@ -128,6 +126,39 @@ public class ProcessingExecutionSnapshotParser {
                 || !("LIGHT".equals(strength) || "MEDIUM".equals(strength)
                 || "STRONG".equals(strength))) {
             throw invalidParameter("strength must be LIGHT, MEDIUM or STRONG");
+        }
+    }
+
+    private void validateSilenceCleanup(Map<String, Object> parameters) {
+        Object modeValue = parameters.get("mode");
+        if (!(modeValue instanceof String mode)
+                || !("COMPRESS".equals(mode) || "REMOVE".equals(mode))) {
+            throw invalidParameter("mode must be COMPRESS or REMOVE");
+        }
+        BigDecimal minSilence = wholeMilliseconds(parameters,
+                "minSilenceMs");
+        inRange(minSilence, MIN_SILENCE_MS, MAX_SILENCE_MS,
+                "minSilenceMs");
+        if ("COMPRESS".equals(mode)) {
+            BigDecimal keepSilence = wholeMilliseconds(parameters,
+                    "keepSilenceMs");
+            inRange(keepSilence, MIN_KEEP_SILENCE_MS,
+                    MAX_KEEP_SILENCE_MS, "keepSilenceMs");
+            if (keepSilence.compareTo(minSilence) >= 0) {
+                throw invalidParameter(
+                        "keepSilenceMs must be shorter than minSilenceMs");
+            }
+        }
+    }
+
+    private BigDecimal wholeMilliseconds(Map<String, Object> parameters,
+                                         String name) {
+        BigDecimal value = number(parameters, name);
+        try {
+            value.longValueExact();
+            return value;
+        } catch (ArithmeticException e) {
+            throw invalidParameter(name + " must be a whole number");
         }
     }
 

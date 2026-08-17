@@ -39,6 +39,11 @@ public class ProcessingPlanSummaryBuilder {
         if (denoise && normalize) {
             return "建议先降低背景噪声，再统一整段音量。";
         }
+        boolean silenceCleanup = contains(steps,
+                ProcessingOperationType.SILENCE_CLEANUP);
+        if (silenceCleanup) {
+            return "检测到多处较长的静音停顿，建议压缩或删除。";
+        }
         if (denoise) {
             return "检测到持续背景噪声，建议执行智能降噪。";
         }

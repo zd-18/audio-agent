@@ -3,6 +3,8 @@ package com.audioagent.processing.pipeline;
 import com.audioagent.analysis.processing.ProcessingOperationType;
 import com.audioagent.analysis.probe.AudioMetadata;
 import com.audioagent.analysis.probe.AudioMetadataProbe;
+import com.audioagent.analysis.silence.SilenceDetectOutputParser;
+import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,6 +46,11 @@ class AudioProcessingPipelineDurationTest {
         ffmpeg = mock(FfmpegCommandExecutor.class);
         pipeline = new AudioProcessingPipeline(
                 new SilenceTrimProcessor(ffmpeg,
+                        new SilenceTrimPlanner()),
+                new SilenceCleanupProcessor(ffmpeg,
+                        new LongSilenceDetector(ffmpeg,
+                                new SilenceDetectOutputParser(),
+                                new AnalysisProperties()),
                         new SilenceTrimPlanner()),
                 denoiseProcessor, loudnessProcessor, outputValidator,
                 metadataProbe, ffmpeg);

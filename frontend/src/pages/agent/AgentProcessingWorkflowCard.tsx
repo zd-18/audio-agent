@@ -92,6 +92,7 @@ export default function AgentProcessingWorkflowCard({
         <div className="agent-workflow-confirm">
           <p>确认后才会修改音频，并生成一个新的结果文件；原文件不会被覆盖。</p>
           <Button
+            htmlType="button"
             type="primary"
             loading={confirming}
             disabled={confirming}

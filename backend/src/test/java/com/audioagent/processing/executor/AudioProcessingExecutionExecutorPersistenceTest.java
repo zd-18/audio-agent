@@ -95,7 +95,7 @@ class AudioProcessingExecutionExecutorPersistenceTest {
         MinioProperties minioProperties = new MinioProperties();
         minioProperties.setBucketName("result-bucket");
         executor = new AudioProcessingExecutionExecutor(executionMapper,
-                stepMapper, fileMapper, new AudioVersionSummaryBuilder(),
+                stepMapper, fileMapper, new AudioVersionSummaryBuilder(new ObjectMapper()),
                 storageService, minioProperties,
                 pipeline, metadataProbe, outputValidator, resultCritic,
                 workDirectories,

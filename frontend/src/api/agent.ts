@@ -15,6 +15,7 @@ export interface AgentConversationListParams {
   current?: number
   size?: number
   transcriptId?: string
+  audioFileId?: string
   status?: string
 }
 
@@ -49,7 +50,9 @@ export function createAgentConversation(
   request: CreateAgentConversationRequest,
   signal?: AbortSignal,
 ) {
-  if (!isValidResourceId(request.transcriptId)) throw new Error('文字稿 ID 无效')
+  if (request.transcriptId && !isValidResourceId(request.transcriptId)) throw new Error('文字稿 ID 无效')
+  if (request.audioFileId && !isValidResourceId(request.audioFileId)) throw new Error('音频文件 ID 无效')
+  if (!request.transcriptId && !request.audioFileId) throw new Error('请先提供文字稿或音频文件')
   return apiRequest<AgentConversation>(AGENT_CONVERSATIONS_PATH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -69,6 +72,10 @@ export function getAgentConversations(
   if (params.transcriptId) {
     if (!isValidResourceId(params.transcriptId)) throw new Error('文字稿 ID 无效')
     search.set('transcriptId', params.transcriptId)
+  }
+  if (params.audioFileId) {
+    if (!isValidResourceId(params.audioFileId)) throw new Error('音频文件 ID 无效')
+    search.set('audioFileId', params.audioFileId)
   }
   if (params.status) search.set('status', params.status)
   return apiRequest<AgentConversationPage>(`${AGENT_CONVERSATIONS_PATH}?${search.toString()}`, {

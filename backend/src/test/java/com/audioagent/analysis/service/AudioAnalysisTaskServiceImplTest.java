@@ -2,6 +2,8 @@ package com.audioagent.analysis.service;
 
 import com.audioagent.analysis.entity.AudioAnalysisResult;
 import com.audioagent.analysis.entity.AudioAnalysisTask;
+import com.audioagent.analysis.dto.CreateTaskRequest;
+import com.audioagent.analysis.event.AudioAnalysisTaskCreatedEvent;
 import com.audioagent.analysis.enums.AnalysisTaskStatus;
 import com.audioagent.analysis.enums.AnalysisType;
 import com.audioagent.analysis.mapper.AudioAnalysisResultMapper;
@@ -184,6 +186,43 @@ class AudioAnalysisTaskServiceImplTest {
         assertEquals(first.getTaskId(), duplicate.getTaskId());
         verify(taskMapper, times(1)).insert(any(AudioAnalysisTask.class));
         verify(eventPublisher, times(1)).publishEvent(any());
+    }
+
+    @Test
+    void createTaskKeepsTheExplicitlySelectedAudioVersionAsInput() {
+        long selectedVersionId = 922337203685477500L;
+        AudioFile selectedVersion = new AudioFile();
+        selectedVersion.setId(selectedVersionId);
+        selectedVersion.setUserId(USER_ID);
+        selectedVersion.setSourceFileId(11L);
+        selectedVersion.setRootAudioFileId(11L);
+        selectedVersion.setVersionNo(1);
+        selectedVersion.setDeleted(0);
+        when(audioFileMapper.selectById(selectedVersionId))
+                .thenReturn(selectedVersion);
+        when(taskMapper.insert(any(AudioAnalysisTask.class)))
+                .thenAnswer(invocation -> {
+                    AudioAnalysisTask task = invocation.getArgument(0);
+                    task.setId(32L);
+                    return 1;
+                });
+        CreateTaskRequest request = new CreateTaskRequest();
+        request.setAudioFileId(selectedVersionId);
+        request.setAnalysisType(AnalysisType.FULL.name());
+
+        TaskVO created = service.createTask(request);
+
+        assertEquals(selectedVersionId, created.getAudioFileId());
+        ArgumentCaptor<AudioAnalysisTask> taskCaptor =
+                ArgumentCaptor.forClass(AudioAnalysisTask.class);
+        verify(taskMapper).insert(taskCaptor.capture());
+        assertEquals(selectedVersionId,
+                taskCaptor.getValue().getAudioFileId());
+        ArgumentCaptor<AudioAnalysisTaskCreatedEvent> eventCaptor =
+                ArgumentCaptor.forClass(AudioAnalysisTaskCreatedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertEquals(selectedVersionId,
+                eventCaptor.getValue().getAudioFileId());
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

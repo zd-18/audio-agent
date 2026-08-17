@@ -41,10 +41,11 @@ public class AgentConversationController {
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String transcriptId,
+            @RequestParam(required = false) String audioFileId,
             @RequestParam(required = false) String status) {
         return ApiResponse.success(conversationService.list(
                 currentUserProvider.requireUserId(), current, size,
-                transcriptId, status));
+                transcriptId, audioFileId, status));
     }
 
     @GetMapping("/{conversationId}")

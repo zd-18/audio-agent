@@ -56,7 +56,7 @@ export default function AudioVersionHistory({
     <section className="processing-version-history" aria-labelledby="processing-version-history-title">
       <div className="processing-execution-section-heading processing-version-history__heading">
         <div>
-          <span>VERSION HISTORY</span>
+          <span>版本历史</span>
           <h2 id="processing-version-history-title">音频版本</h2>
           <p>每次处理都会保留为独立版本。可试听、下载，或选择任一版本继续修改。</p>
         </div>

@@ -10,6 +10,7 @@ public class ProcessingOperationCatalog {
             case NORMALIZE_VOLUME -> "统一整段音量";
             case TRIM_SEGMENT -> "裁剪指定音频片段";
             case DENOISE -> "智能降噪";
+            case SILENCE_CLEANUP -> "长静音处理";
             case REVIEW_SILENCE -> "试听静音片段";
             case TRIM_SILENCE -> "缩短较长静音";
             case INCREASE_GAIN -> "提升局部音量";
@@ -29,6 +30,8 @@ public class ProcessingOperationCatalog {
                     + "，该时间范围将从结果音频中移除。";
             case DENOISE ->
                     "降低整段音频中持续的背景噪声（如电流声、环境底噪），保留主要内容。";
+            case SILENCE_CLEANUP ->
+                    "压缩或删除整段音频中过长的静音停顿，让内容节奏更紧凑。";
             case REVIEW_SILENCE -> "建议试听" + range(startMs, endMs)
                     + "，确认该静音是否需要处理。";
             case TRIM_SILENCE -> "建议试听" + range(startMs, endMs)
@@ -54,6 +57,8 @@ public class ProcessingOperationCatalog {
                     "该时间范围需要从结果音频中裁剪。";
             case DENOISE ->
                     "检测到持续的背景噪声，可能影响内容听感，建议进行智能降噪。";
+            case SILENCE_CLEANUP ->
+                    "检测到多处较长的静音停顿，可能影响内容节奏，建议压缩或删除。";
             case REVIEW_SILENCE ->
                     "该片段存在短时静音，建议结合内容语义确认。";
             case TRIM_SILENCE ->

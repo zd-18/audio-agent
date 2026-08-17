@@ -37,6 +37,7 @@ export default function App() {
           <Route path="/audio/upload" element={<AudioUploadPage />} />
           <Route path="/audio/files" element={<AudioFileLookupPage />} />
           <Route path="/audio/files/:audioFileId" element={<AudioFileDetailPage />} />
+          <Route path="/audio/files/:audioFileId/agent" element={<AgentConversationPage />} />
           <Route path="/analysis/tasks" element={<AnalysisTaskLookupPage />} />
           <Route path="/processing/executions" element={<Navigate to="/tasks" replace />} />
           <Route path="/transcriptions" element={<TranscriptionListPage />} />

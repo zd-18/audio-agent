@@ -27,12 +27,28 @@ public class AgentProcessingContextService {
     public AgentProcessingContext build(Long userId,
                                         AgentConversation conversation,
                                         String requirement) {
-        AudioTranscript transcript = transcriptMapper.selectOwned(userId,
-                conversation.getTranscriptId());
-        if (transcript == null) {
-            throw unavailable("The conversation transcript is unavailable");
+        // 音频处理会话直接基于 AudioFile；转写只是可选的补充上下文，
+        // 未转写、转写失败或无人声的音频仍可进入处理工作流。
+        Long audioFileId = conversation.getAudioFileId();
+        String transcriptContent = "";
+        Long transcriptId = conversation.getTranscriptId();
+        if (transcriptId != null) {
+            AudioTranscript transcript = transcriptMapper.selectOwned(
+                    userId, transcriptId);
+            if (transcript != null) {
+                if (audioFileId == null) {
+                    audioFileId = transcript.getAudioFileId();
+                }
+                TranscriptChatContext transcriptContext =
+                        transcriptContextService.build(userId,
+                                transcriptId, requirement);
+                transcriptContent = transcriptContext.content();
+            }
         }
-        AudioFile file = audioFileMapper.selectById(transcript.getAudioFileId());
+        if (audioFileId == null) {
+            throw unavailable("The source audio file is unavailable");
+        }
+        AudioFile file = audioFileMapper.selectById(audioFileId);
         if (file == null || !userId.equals(file.getUserId())
                 || Integer.valueOf(1).equals(file.getDeleted())
                 || file.getDurationMs() == null || file.getDurationMs() <= 0) {
@@ -43,12 +59,10 @@ public class AgentProcessingContextService {
         if (task == null) {
             throw unavailable("A completed audio analysis is required before planning");
         }
-        TranscriptChatContext transcriptContext = transcriptContextService
-                .build(userId, transcript.getId(), requirement);
         return new AgentProcessingContext(task.getId(), file.getId(),
                 file.getOriginalName(), file.getDurationMs(),
                 file.getSampleRate(), file.getChannels(),
-                transcriptContext.content());
+                transcriptContent);
     }
 
     private AgentExecutionException unavailable(String message) {

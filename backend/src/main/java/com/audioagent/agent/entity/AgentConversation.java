@@ -17,6 +17,7 @@ public class AgentConversation {
     private Long id;
     private Long userId;
     private Long transcriptId;
+    private Long audioFileId;
     private String title;
     private AgentConversationStatus status;
     private String modelName;

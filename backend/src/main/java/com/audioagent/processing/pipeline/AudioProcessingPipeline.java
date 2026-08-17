@@ -19,6 +19,7 @@ import java.util.List;
 public class AudioProcessingPipeline {
 
     private final SilenceTrimProcessor trimProcessor;
+    private final SilenceCleanupProcessor silenceCleanupProcessor;
     private final DenoiseProcessor denoiseProcessor;
     private final LoudnessNormalizeProcessor loudnessProcessor;
     private final ProcessingOutputValidator outputValidator;
@@ -57,6 +58,22 @@ public class AudioProcessingPipeline {
             outputValidator.validateFile(output);
             current = output;
             transformed = true;
+        }
+
+        ExecutableProcessingStep silenceCleanup = single(safeSteps,
+                ProcessingOperationType.SILENCE_CLEANUP);
+        if (silenceCleanup != null) {
+            progress.onStage(ProcessingExecutionStage.SILENCE_CLEANING, 50);
+            Path output = workDirectory.resolve("stage-silence-clean.wav");
+            SilenceCleanupProcessor.CleanupResult cleanup =
+                    silenceCleanupProcessor.process(current, output,
+                            expectedDuration, silenceCleanup);
+            if (cleanup.applied()) {
+                expectedDuration = cleanup.expectedDurationMs();
+                outputValidator.validateFile(output);
+                current = output;
+                transformed = true;
+            }
         }
 
         ExecutableProcessingStep denoise = single(safeSteps,
@@ -107,7 +124,7 @@ public class AudioProcessingPipeline {
                     || !step.operationType().isExecutable()) {
                 throw new ProcessingExecutionException(
                         ErrorCode.PROCESSING_EXECUTION_UNSUPPORTED_OPERATION,
-                        false, "Only NORMALIZE_VOLUME, TRIM_SEGMENT and DENOISE are supported");
+                        false, "Only NORMALIZE_VOLUME, TRIM_SEGMENT, DENOISE and SILENCE_CLEANUP are supported");
             }
         }
     }

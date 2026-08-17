@@ -29,6 +29,7 @@ import { ApiError, isValidResourceId } from '../../api/http'
 import ReportAudioPlayer from '../../components/audio/ReportAudioPlayer'
 import PageContainer from '../../components/workbench/PageContainer'
 import PageTitle from '../../components/workbench/PageTitle'
+import { useAudioFileDetail } from '../../hooks/useAudioFileDetail'
 import { useAudioPlayback } from '../../hooks/useAudioPlayback'
 import { useTranscript } from '../../hooks/useTranscript'
 import { useTranscriptionTaskPolling } from '../../hooks/useTranscriptionTaskPolling'
@@ -53,6 +54,12 @@ const RECOMMENDED_QUESTIONS = [
   '这段音频主要表达了什么观点？',
   '请总结其中的关键内容。',
   '哪些原文最能体现说话者的核心观点？',
+]
+
+const RECOMMENDED_PROCESSING_REQUESTS = [
+  '把整段音量调整得更均衡',
+  '去掉中间过长的停顿',
+  '裁剪掉开头的一段',
 ]
 
 interface DisplayAgentMessage extends AgentMessage {
@@ -259,14 +266,23 @@ function AgentMessageItem({
 
 export default function AgentConversationPage() {
   const { message: messageApi } = AntdApp.useApp()
-  const { taskId } = useParams()
+  const { taskId, audioFileId } = useParams()
   const validTaskId = isValidResourceId(taskId) ? taskId : undefined
+  const validAudioFileId = isValidResourceId(audioFileId) ? audioFileId : undefined
+  // 处理入口直接基于 AudioFile；问答入口基于转写任务 + 文字稿。
+  const processingEntry = Boolean(validAudioFileId && !validTaskId)
   const taskState = useTranscriptionTaskPolling(validTaskId)
   const task = taskState.task?.taskId === validTaskId ? taskState.task : null
   const transcriptState = useTranscript(validTaskId, task?.status === 'SUCCESS')
   const transcript = transcriptState.transcript
   const transcriptId = transcript?.transcriptId
-  const player = useAudioPlayback(task?.audioFileId, transcript?.durationMs)
+  const fileState = useAudioFileDetail(processingEntry ? validAudioFileId : undefined)
+  const audioFile = fileState.data
+  const entryKey = processingEntry ? `audio:${validAudioFileId}` : `transcript:${transcriptId ?? ''}`
+  const player = useAudioPlayback(
+    processingEntry ? validAudioFileId : task?.audioFileId,
+    processingEntry ? audioFile?.durationMs : transcript?.durationMs,
+  )
   const playerRef = useRef(player)
   playerRef.current = player
   const [conversations, setConversations] = useState<AgentConversation[]>([])
@@ -280,8 +296,11 @@ export default function AgentConversationPage() {
   const [creating, setCreating] = useState(false)
   const [sending, setSending] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
+  const [processingError, setProcessingError] = useState<string | null>(null)
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null)
-  const [requestMode, setRequestMode] = useState<AgentRequestMode>('CHAT')
+  const [requestMode, setRequestMode] = useState<AgentRequestMode>(
+    processingEntry ? 'PROCESSING' : 'CHAT',
+  )
   const [workflows, setWorkflows] = useState<AgentProcessingWorkflow[]>([])
   const [confirmingWorkflowId, setConfirmingWorkflowId] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
@@ -292,6 +311,7 @@ export default function AgentConversationPage() {
   const createControllerRef = useRef<AbortController | null>(null)
   const sendControllerRef = useRef<AbortController | null>(null)
   const sendInFlightRef = useRef(false)
+  const confirmingWorkflowRef = useRef<string | null>(null)
   const mountedRef = useRef(true)
   const skipNextMessageLoadRef = useRef<string | null>(null)
   const messageEndRef = useRef<HTMLDivElement | null>(null)
@@ -317,26 +337,33 @@ export default function AgentConversationPage() {
     setMessages([])
     setRetryRequest(null)
     setComposerError(null)
+    setProcessingError(null)
     setActiveCitation(null)
     setWorkflows([])
     setConfirmingWorkflowId(null)
-  }, [transcriptId])
+  }, [entryKey])
 
   useEffect(() => {
-    if (!transcriptId) return
+    if (!entryKey) return
+    if (processingEntry && !validAudioFileId) return
+    if (!processingEntry && !transcriptId) return
     const controller = new AbortController()
     setConversationsLoading(true)
     setConversationsError(null)
     getAgentConversations({
       current: 1,
       size: 20,
-      transcriptId,
+      ...(processingEntry ? { audioFileId: validAudioFileId } : { transcriptId }),
       status: 'ACTIVE',
     }, controller.signal)
       .then((page) => {
         if (controller.signal.aborted) return
-        const matching = page.records.filter((conversation) => conversation.transcriptId === transcriptId)
-        const latest = selectLatestActiveConversation(matching, transcriptId)
+        const matching = processingEntry
+          ? page.records.filter((conversation) => conversation.audioFileId === validAudioFileId)
+          : page.records.filter((conversation) => conversation.transcriptId === transcriptId)
+        const latest = processingEntry
+          ? selectLatestActiveConversation(matching, null, 'audioFileId')
+          : selectLatestActiveConversation(matching, transcriptId, 'transcriptId')
         setConversations(matching)
         setSelectedConversationId((current) => {
           const next = current && matching.some((item) => item.conversationId === current)
@@ -354,7 +381,11 @@ export default function AgentConversationPage() {
         if (!controller.signal.aborted) setConversationsLoading(false)
       })
     return () => controller.abort()
-  }, [conversationVersion, transcriptId])
+  }, [conversationVersion, entryKey, processingEntry, transcriptId, validAudioFileId])
+
+  useEffect(() => {
+    if (processingEntry) setRequestMode('PROCESSING')
+  }, [processingEntry])
 
   useEffect(() => {
     const currentPlayer = playerRef.current
@@ -363,6 +394,7 @@ export default function AgentConversationPage() {
     setActiveCitation(null)
     setMessagesError(null)
     setComposerError(null)
+    setProcessingError(null)
     setRetryRequest(null)
     if (!selectedConversationId) {
       setMessages([])
@@ -411,13 +443,14 @@ export default function AgentConversationPage() {
       .then((items) => {
         if (!controller.signal.aborted
           && selectedConversationIdRef.current === conversationId) {
+          setProcessingError(null)
           setWorkflows(items)
         }
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
         if (selectedConversationIdRef.current === conversationId) {
-          setComposerError(error instanceof Error ? error.message : '音频处理进度加载失败')
+          setProcessingError('音频处理状态加载失败，请稍后重试。')
         }
       })
     return () => controller.abort()
@@ -471,14 +504,20 @@ export default function AgentConversationPage() {
   }, [messages, sending])
 
   const createConversation = useCallback(async () => {
-    if (!transcriptId) throw new Error('文字稿尚未加载完成')
+    if (!processingEntry && !transcriptId) throw new Error('文字稿尚未加载完成')
+    if (processingEntry && !validAudioFileId) throw new Error('音频文件尚未加载完成')
     if (createPromiseRef.current) return createPromiseRef.current
     const controller = new AbortController()
     createControllerRef.current = controller
     setCreating(true)
-    const promise = createAgentConversation({ transcriptId, title: null }, controller.signal)
+    const request = processingEntry
+      ? { audioFileId: validAudioFileId, title: null }
+      : { transcriptId, title: null }
+    const promise = createAgentConversation(request, controller.signal)
       .then((conversation) => {
-        if (!mountedRef.current || transcriptId !== transcript?.transcriptId) return conversation
+        if (!mountedRef.current || entryKey !== (processingEntry
+          ? `audio:${conversation.audioFileId ?? ''}`
+          : `transcript:${conversation.transcriptId ?? ''}`)) return conversation
         skipNextMessageLoadRef.current = conversation.conversationId
         selectedConversationIdRef.current = conversation.conversationId
         setSelectedConversationId(conversation.conversationId)
@@ -499,10 +538,10 @@ export default function AgentConversationPage() {
       })
     createPromiseRef.current = promise
     return promise
-  }, [transcript, transcriptId])
+  }, [entryKey, processingEntry, transcriptId, validAudioFileId])
 
   const newConversation = async () => {
-    if (creating || sending || !transcriptId) return
+    if (creating || sending || (!transcriptId && !validAudioFileId)) return
     try {
       await createConversation()
       void messageApi.success('已创建新对话')
@@ -518,7 +557,7 @@ export default function AgentConversationPage() {
     if (
       !content
       || sendInFlightRef.current
-      || !transcriptId
+      || (!transcriptId && !validAudioFileId)
       || conversationsLoading
       || messagesLoading
     ) return
@@ -526,6 +565,7 @@ export default function AgentConversationPage() {
     sendInFlightRef.current = true
     setSending(true)
     setComposerError(null)
+    setProcessingError(null)
     setRetryRequest(null)
     let targetConversationId = retry?.conversationId || selectedConversationIdRef.current
     let optimisticAdded = false
@@ -607,12 +647,13 @@ export default function AgentConversationPage() {
       sendInFlightRef.current = false
       if (mountedRef.current) setSending(false)
     }
-  }, [conversationsLoading, createConversation, input, messagesLoading, requestMode, transcriptId])
+  }, [conversationsLoading, createConversation, input, messagesLoading, requestMode, transcriptId, validAudioFileId])
 
   const confirmWorkflow = useCallback(async (workflowId: string) => {
-    if (confirmingWorkflowId) return
+    if (confirmingWorkflowRef.current !== null) return
+    confirmingWorkflowRef.current = workflowId
     setConfirmingWorkflowId(workflowId)
-    setComposerError(null)
+    setProcessingError(null)
     try {
       const updated = await confirmAgentProcessingWorkflow(workflowId)
       if (!mountedRef.current) return
@@ -622,11 +663,16 @@ export default function AgentConversationPage() {
       void messageApi.success('已确认，开始处理音频')
     } catch (error) {
       if (!mountedRef.current) return
-      setComposerError(error instanceof Error ? error.message : '处理方案确认失败')
+      if (error instanceof ApiError && (error.status === 401
+        || [40501, 40504, 40507].includes(error.code ?? 0))) return
+      setProcessingError('音频处理未能启动，请稍后重试。')
     } finally {
+      if (confirmingWorkflowRef.current === workflowId) {
+        confirmingWorkflowRef.current = null
+      }
       if (mountedRef.current) setConfirmingWorkflowId(null)
     }
-  }, [confirmingWorkflowId, messageApi])
+  }, [messageApi])
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -667,10 +713,15 @@ export default function AgentConversationPage() {
   }, [activeCitation?.key, player.isPlaying, player.pause, player.resume, player.seekTo])
 
   const download = async () => {
-    if (!task || downloading) return
+    if (downloading) return
+    const fileId = processingEntry ? validAudioFileId : task?.audioFileId
+    if (!fileId) return
+    const fileName = processingEntry
+      ? audioFile?.originalName || `audio-${validAudioFileId}`
+      : task?.audioFileName || `audio-${task?.audioFileId}`
     setDownloading(true)
     try {
-      await downloadAudioFile(task.audioFileId, task.audioFileName || `audio-${task.audioFileId}`)
+      await downloadAudioFile(fileId, fileName)
     } catch (error) {
       void messageApi.error(error instanceof Error ? error.message : '音频下载失败')
     } finally {
@@ -682,12 +733,14 @@ export default function AgentConversationPage() {
     () => conversations.find((conversation) => conversation.conversationId === selectedConversationId) ?? null,
     [conversations, selectedConversationId],
   )
-  const contextLoading = taskState.loading || (task?.status === 'SUCCESS' && transcriptState.loading)
+  const contextLoading = processingEntry
+    ? fileState.loading
+    : taskState.loading || (task?.status === 'SUCCESS' && transcriptState.loading)
 
-  if (!validTaskId) {
+  if (!validTaskId && !validAudioFileId) {
     return (
       <PageContainer>
-        <Alert type="error" showIcon message="Agent 页面地址无效" description="请从文字稿详情页重新进入。" action={<Link to="/transcriptions"><Button>返回转写列表</Button></Link>} />
+        <Alert type="error" showIcon message="Agent 页面地址无效" description="请从音频文件页或文字稿详情页重新进入。" action={<Link to="/audio/files"><Button>返回音频文件</Button></Link>} />
       </PageContainer>
     )
   }
@@ -695,35 +748,44 @@ export default function AgentConversationPage() {
   return (
     <PageContainer>
       <PageTitle
-        eyebrow="TRANSCRIPT AGENT"
-        title={task?.audioFileName || '智能问答'}
-        description="围绕当前文字稿持续追问；回答中的引用可直接定位到源音频。"
-        actions={<Link to={`/transcriptions/${encodeURIComponent(validTaskId)}`}><Button icon={<ArrowLeftOutlined />}>返回文字稿</Button></Link>}
+        eyebrow={processingEntry ? 'AUDIO AGENT' : 'TRANSCRIPT AGENT'}
+        title={processingEntry
+          ? (audioFile?.originalName || '智能处理')
+          : (task?.audioFileName || '智能问答')}
+        description={processingEntry
+          ? '直接基于当前音频文件描述处理需求，如裁剪片段、降噪、压缩长静音、调整音量；无需等待转写。'
+          : '围绕当前文字稿持续追问；回答中的引用可直接定位到源音频。'}
+        actions={processingEntry
+          ? <Link to={`/audio/files/${encodeURIComponent(validAudioFileId ?? '')}`}><Button icon={<ArrowLeftOutlined />}>返回文件</Button></Link>
+          : <Link to={`/transcriptions/${encodeURIComponent(validTaskId ?? '')}`}><Button icon={<ArrowLeftOutlined />}>返回文字稿</Button></Link>}
       />
 
-      {contextLoading && !transcript && <section className="workbench-panel"><Skeleton active paragraph={{ rows: 8 }} /></section>}
-      {taskState.error && !task && <Alert className="resource-detail-alert" type="error" showIcon message="转写任务加载失败" description={taskState.error} action={<Button onClick={taskState.refresh}>重试</Button>} />}
-      {task && task.status !== 'SUCCESS' && (
+      {contextLoading && !audioFile && !transcript && <section className="workbench-panel"><Skeleton active paragraph={{ rows: 8 }} /></section>}
+      {!processingEntry && taskState.error && !task && <Alert className="resource-detail-alert" type="error" showIcon message="转写任务加载失败" description={taskState.error} action={<Button onClick={taskState.refresh}>重试</Button>} />}
+      {!processingEntry && task && task.status !== 'SUCCESS' && (
         <Alert
           className="resource-detail-alert"
           type="warning"
           showIcon
           message="文字稿尚未准备完成"
-          description="Agent 需要成功的文字稿才能回答问题，请返回详情等待转写完成。"
-          action={<Link to={`/transcriptions/${encodeURIComponent(validTaskId)}`}><Button>查看转写状态</Button></Link>}
+          description="内容问答需要成功的文字稿才能回答问题；音频处理不需要文字稿。"
+          action={<Link to={`/transcriptions/${encodeURIComponent(validTaskId ?? '')}`}><Button>查看转写状态</Button></Link>}
         />
       )}
-      {transcriptState.error && <Alert className="resource-detail-alert" type="error" showIcon message="文字稿加载失败" description={transcriptState.error} action={<Button onClick={transcriptState.refresh}>重试</Button>} />}
+      {!processingEntry && transcriptState.error && <Alert className="resource-detail-alert" type="error" showIcon message="文字稿加载失败" description={transcriptState.error} action={<Button onClick={transcriptState.refresh}>重试</Button>} />}
+      {processingEntry && fileState.error && <Alert className="resource-detail-alert" type="error" showIcon message="音频文件加载失败" description={fileState.error} action={<Button onClick={fileState.refresh}>重试</Button>} />}
 
-      {task && transcript && (
+      {(processingEntry ? audioFile : task && transcript) && (
         <>
           <ReportAudioPlayer
             player={player}
-            fallbackFileName={task.audioFileName}
+            fallbackFileName={processingEntry
+              ? (audioFile?.originalName || 'audio')
+              : task?.audioFileName}
             downloading={downloading}
             onDownload={() => { void download() }}
             sectionId="agent-audio-player"
-            eyebrow="CITATION AUDIO"
+            eyebrow={processingEntry ? 'SOURCE AUDIO' : 'CITATION AUDIO'}
           />
 
           <section className="agent-workspace" aria-label="Agent 多轮问答工作区">
@@ -791,7 +853,7 @@ export default function AgentConversationPage() {
                   <span>ACTIVE CONVERSATION</span>
                   <h3 id="agent-chat-title">{selectedConversation?.title || '开始新的对话'}</h3>
                 </div>
-                <span className="agent-chat-panel__audio"><AudioOutlined /> {transcript.audioFileName || task.audioFileName}</span>
+                <span className="agent-chat-panel__audio"><AudioOutlined /> {audioFile?.originalName || transcript?.audioFileName || task?.audioFileName}</span>
               </div>
 
               <div className="agent-message-viewport" aria-busy={messagesLoading}>
@@ -813,13 +875,27 @@ export default function AgentConversationPage() {
                 {!messagesLoading && messages.length === 0 && !messagesError && (
                   <div className="agent-chat-empty">
                     <span className="agent-chat-empty__icon" aria-hidden="true"><MessageOutlined /></span>
-                    <h4>从文字稿中找到答案</h4>
-                    <p>Agent 会基于当前音频文字稿回答，并在可用时附上可播放的原文引用。</p>
-                    <div className="agent-recommendations" aria-label="推荐问题">
-                      {RECOMMENDED_QUESTIONS.map((question) => (
-                        <button key={question} type="button" onClick={() => setInput(question)}>{question}</button>
-                      ))}
-                    </div>
+                    {processingEntry ? (
+                      <>
+                        <h4>描述希望怎样处理这段音频</h4>
+                        <p>裁剪片段、降噪、压缩长静音、调整音量等都可以直接告诉 Agent，无需先转写。</p>
+                        <div className="agent-recommendations" aria-label="推荐处理需求">
+                          {RECOMMENDED_PROCESSING_REQUESTS.map((request) => (
+                            <button key={request} type="button" onClick={() => setInput(request)}>{request}</button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <h4>从文字稿中找到答案</h4>
+                        <p>Agent 会基于当前音频文字稿回答，并在可用时附上可播放的原文引用。</p>
+                        <div className="agent-recommendations" aria-label="推荐问题">
+                          {RECOMMENDED_QUESTIONS.map((question) => (
+                            <button key={question} type="button" onClick={() => setInput(question)}>{question}</button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
                 {!messagesLoading && messages.map((agentMessage) => (
@@ -844,6 +920,15 @@ export default function AgentConversationPage() {
               </div>
 
               <form className="agent-composer" onSubmit={(event) => { event.preventDefault(); void submitMessage() }}>
+                {processingError && (
+                  <Alert
+                    className="agent-composer__error"
+                    type="error"
+                    showIcon
+                    message="音频处理操作失败"
+                    description={processingError}
+                  />
+                )}
                 {composerError && (
                   <Alert
                     className="agent-composer__error"
@@ -855,15 +940,17 @@ export default function AgentConversationPage() {
                   />
                 )}
                 <div className="agent-composer__mode" role="group" aria-label="Agent 请求类型">
-                  <button
-                    type="button"
-                    className={requestMode === 'CHAT' ? 'is-active' : ''}
-                    aria-pressed={requestMode === 'CHAT'}
-                    disabled={sending}
-                    onClick={() => setRequestMode('CHAT')}
-                  >
-                    内容问答
-                  </button>
+                  {!processingEntry && (
+                    <button
+                      type="button"
+                      className={requestMode === 'CHAT' ? 'is-active' : ''}
+                      aria-pressed={requestMode === 'CHAT'}
+                      disabled={sending}
+                      onClick={() => setRequestMode('CHAT')}
+                    >
+                      内容问答
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={requestMode === 'PROCESSING' ? 'is-active' : ''}

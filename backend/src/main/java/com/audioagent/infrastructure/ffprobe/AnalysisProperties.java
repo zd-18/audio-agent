@@ -421,6 +421,12 @@ public class AnalysisProperties {
 
         @Min(0)
         private long keepTailMs = 200;
+
+        @Min(1)
+        private long longSilenceMinMs = 3000;
+
+        @Min(100)
+        private long keepSilenceMs = 800;
     }
 
     @Data

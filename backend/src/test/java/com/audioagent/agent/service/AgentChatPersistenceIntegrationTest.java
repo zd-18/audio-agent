@@ -4,6 +4,7 @@ import com.audioagent.agent.dto.CreateAgentConversationRequest;
 import com.audioagent.agent.dto.SendAgentMessageRequest;
 import com.audioagent.agent.mapper.AgentConversationMapper;
 import com.audioagent.agent.mapper.AgentMessageCitationMapper;
+import com.audioagent.agent.vo.AgentConversationVO;
 import com.audioagent.agent.mapper.AgentMessageMapper;
 import com.audioagent.ai.AiChatClient;
 import com.audioagent.ai.AiChatRequest;
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -82,6 +84,11 @@ class AgentChatPersistenceIntegrationTest {
     @BeforeEach
     void resetDatabase() {
         reset(aiChatClient);
+        jdbcTemplate.update("DELETE FROM outbox_event");
+        jdbcTemplate.update("DELETE FROM audio_processing_plan");
+        jdbcTemplate.update("DELETE FROM audio_processing_confirmation");
+        jdbcTemplate.update("DELETE FROM audio_processing_step");
+        jdbcTemplate.update("DELETE FROM audio_processing_step_confirmation");
         jdbcTemplate.update("DELETE FROM agent_processing_workflow");
         jdbcTemplate.update("DELETE FROM agent_message_citation");
         jdbcTemplate.update("DELETE FROM agent_message");
@@ -93,6 +100,91 @@ class AgentChatPersistenceIntegrationTest {
                 "meeting.mp3", "这段音频强调真实引用和可追溯性。");
         seedTranscript(8L, 12L, 82L, 302L,
                 "private.mp3", "其他用户的文字稿。");
+    }
+
+    @Test
+    void processingConversationCreatedForAudioFileWithoutTranscript()
+            throws Exception {
+        // 未转写 / 转写失败：该 audio_file 不存在任何 audio_transcript 记录，
+        // 仅凭 audioFileId 仍能进入音频处理 Agent。
+        seedAudioFileWithoutTranscript(7L, 83L, "cleanup.mp3", 5_000);
+        seedSuccessfulAnalysisTask(41L, 83L);
+
+        AgentConversationVO conversation = conversationService.create(7L,
+                audioFileRequest("83", null));
+        assertEquals("cleanup.mp3", conversation.getTitle());
+        assertEquals("83", conversation.getAudioFileId());
+        assertNull(conversation.getTranscriptId());
+
+        when(aiChatClient.chat(any())).thenReturn(processingResponse());
+        var result = chatService.send(7L, conversation.getConversationId(),
+                processingRequest("压缩过长的停顿", "processing-1"));
+
+        assertNotNull(result.getProcessingWorkflow());
+        assertEquals("WAITING_CONFIRMATION",
+                result.getProcessingWorkflow().getStatus());
+        assertEquals("83", result.getProcessingWorkflow()
+                .getAudioFileId().toString());
+        verify(aiChatClient).chat(any());
+    }
+
+    @Test
+    void processingConversationWorksWhenTranscriptHasNoSpeech()
+            throws Exception {
+        // 无人声：即使转写结果为空，也不影响进入音频处理 Agent。
+        seedTranscript(7L, 84L, 91L, 401L, "silent.mp3", "");
+        seedSuccessfulAnalysisTask(42L, 84L);
+
+        AgentConversationVO conversation = conversationService.create(7L,
+                audioFileRequest("84", null));
+
+        when(aiChatClient.chat(any())).thenReturn(processingResponse());
+        var result = chatService.send(7L, conversation.getConversationId(),
+                processingRequest("删除所有静音", "processing-silent"));
+
+        assertNotNull(result.getProcessingWorkflow());
+        assertEquals("84", result.getProcessingWorkflow()
+                .getAudioFileId().toString());
+    }
+
+    @Test
+    void contentChatStillRequiresTranscriptOnProcessingConversation() {
+        seedAudioFileWithoutTranscript(7L, 85L, "chatless.mp3", 3_000);
+        seedSuccessfulAnalysisTask(43L, 85L);
+        AgentConversationVO conversation = conversationService.create(7L,
+                audioFileRequest("85", null));
+
+        BusinessException failure = assertThrows(BusinessException.class,
+                () -> chatService.send(7L, conversation.getConversationId(),
+                        messageRequest("这段音频讲了什么？", "chat-1")));
+        assertEquals(ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND.getCode(),
+                failure.getCode());
+
+        BusinessException missing = assertThrows(BusinessException.class,
+                () -> conversationService.create(7L,
+                        createRequest("999", null)));
+        assertEquals(ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND.getCode(),
+                missing.getCode());
+    }
+
+    @Test
+    void createConversationRequiresEitherTranscriptOrAudioFile() {
+        BusinessException failure = assertThrows(BusinessException.class,
+                () -> conversationService.create(7L,
+                        new CreateAgentConversationRequest()));
+        assertEquals(ErrorCode.PARAM_INVALID.getCode(),
+                failure.getCode());
+    }
+
+    @Test
+    void processingConversationRejectsForeignAudioFile() {
+        // 81/82 属于用户 7，文件 83 只属于用户 8。
+        seedAudioFileWithoutTranscript(8L, 83L, "foreign.mp3", 5_000);
+        BusinessException failure = assertThrows(BusinessException.class,
+                () -> conversationService.create(7L,
+                        audioFileRequest("83", null)));
+        assertEquals(ErrorCode.AUDIO_FILE_NOT_FOUND.getCode(),
+                failure.getCode());
     }
 
     @Test
@@ -108,7 +200,7 @@ class AgentChatPersistenceIntegrationTest {
         assertTrue(!first.getConversationId()
                 .equals(second.getConversationId()));
         assertEquals(2, conversationService.list(
-                7L, 1, 20, "81", "ACTIVE").getTotal());
+                7L, 1, 20, "81", null, "ACTIVE").getTotal());
 
         BusinessException missing = assertThrows(BusinessException.class,
                 () -> conversationService.create(7L,
@@ -142,7 +234,7 @@ class AgentChatPersistenceIntegrationTest {
                 messageRequest("刷新第一个会话", "sort-1"));
 
         var page = conversationService.list(
-                7L, 1, 1, "81", "ACTIVE");
+                7L, 1, 1, "81", null, "ACTIVE");
         assertEquals(2, page.getTotal());
         assertEquals(first, page.getRecords().getFirst()
                 .getConversationId());
@@ -291,11 +383,28 @@ class AgentChatPersistenceIntegrationTest {
         return request;
     }
 
+    private CreateAgentConversationRequest audioFileRequest(
+            String audioFileId, String title) {
+        CreateAgentConversationRequest request =
+                new CreateAgentConversationRequest();
+        request.setAudioFileId(audioFileId);
+        request.setTitle(title);
+        return request;
+    }
+
     private SendAgentMessageRequest messageRequest(
             String content, String clientRequestId) {
         SendAgentMessageRequest request = new SendAgentMessageRequest();
         request.setContent(content);
         request.setClientRequestId(clientRequestId);
+        return request;
+    }
+
+    private SendAgentMessageRequest processingRequest(
+            String content, String clientRequestId) {
+        SendAgentMessageRequest request = messageRequest(
+                content, clientRequestId);
+        request.setMode("PROCESSING");
         return request;
     }
 
@@ -305,6 +414,42 @@ class AgentChatPersistenceIntegrationTest {
                  "citations":[{"segmentId":"301",
                  "quote":"这段音频强调真实引用"}]}
                 """.formatted(answer), 11, 12, 23, "deepseek-test");
+    }
+
+    private AiChatResponse processingResponse() {
+        return new AiChatResponse("""
+                {"summary":"压缩长静音","steps":[
+                  {"order":1,"operationType":"SILENCE_CLEANUP",
+                   "parameters":{"mode":"COMPRESS","minSilenceMs":3000,
+                                 "keepSilenceMs":800},
+                   "startMs":null,"endMs":null,"reason":"检测到长停顿"}]}
+                """, 21, 22, 43, "deepseek-test");
+    }
+
+    /** 只有音频文件、没有任何转写记录的音频（未转写或转写失败场景）。 */
+    private void seedAudioFileWithoutTranscript(long userId, long fileId,
+                                                String fileName,
+                                                long durationMs) {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update("""
+                INSERT INTO audio_file (
+                    id, user_id, file_role, original_name, extension,
+                    mime_type, bucket_name, object_key, size_bytes,
+                    duration_ms, file_status, created_at, updated_at, deleted
+                ) VALUES (?, ?, 1, ?, 'mp3', 'audio/mpeg', 'bucket',
+                          ?, 100, ?, 2, ?, ?, 0)
+                """, fileId, userId, fileName,
+                "audio/" + fileName, durationMs, now, now);
+    }
+
+    private void seedSuccessfulAnalysisTask(long taskId, long fileId) {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update("""
+                INSERT INTO audio_analysis_task (
+                    id, audio_file_id, status, progress,
+                    created_at, updated_at, finished_at
+                ) VALUES (?, ?, 'SUCCESS', 100, ?, ?, ?)
+                """, taskId, fileId, now, now, now);
     }
 
     private void seedTranscript(long userId, long fileId,

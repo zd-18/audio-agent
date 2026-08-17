@@ -59,7 +59,9 @@ public class AgentProcessingPlanParser {
 
             List<ProcessingStepDraft> steps = new ArrayList<>();
             List<Range> trimRanges = new ArrayList<>();
-            boolean hasWholeAudioOperation = false;
+            boolean hasNormalize = false;
+            boolean hasDenoise = false;
+            boolean hasSilenceCleanup = false;
             for (int index = 0; index < rawSteps.size(); index++) {
                 JsonNode node = rawSteps.get(index);
                 requireObject(node, "Each Planner step must be an object");
@@ -75,13 +77,23 @@ public class AgentProcessingPlanParser {
                 String reason = text(node, "reason", 500);
 
                 if (operation == ProcessingOperationType.NORMALIZE_VOLUME
-                        || operation == ProcessingOperationType.DENOISE) {
-                    if (hasWholeAudioOperation || startMs != null
+                        || operation == ProcessingOperationType.DENOISE
+                        || operation == ProcessingOperationType.SILENCE_CLEANUP) {
+                    boolean alreadyPresent = switch (operation) {
+                        case NORMALIZE_VOLUME -> hasNormalize;
+                        case DENOISE -> hasDenoise;
+                        default -> hasSilenceCleanup;
+                    };
+                    if (alreadyPresent || startMs != null
                             || endMs != null) {
                         throw invalid(operation
                                 + " must be a single whole-audio step", null);
                     }
-                    hasWholeAudioOperation = true;
+                    switch (operation) {
+                        case NORMALIZE_VOLUME -> hasNormalize = true;
+                        case DENOISE -> hasDenoise = true;
+                        default -> hasSilenceCleanup = true;
+                    }
                 } else {
                     if (!parameters.isEmpty() || startMs == null || endMs == null
                             || startMs < 0 || endMs <= startMs

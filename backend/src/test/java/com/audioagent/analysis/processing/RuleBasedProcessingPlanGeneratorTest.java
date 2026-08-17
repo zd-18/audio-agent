@@ -166,12 +166,58 @@ class RuleBasedProcessingPlanGeneratorTest {
     @Test
     void estimatedDurationMergesOverlappingTrimRanges() {
         ProcessingPlanDraft plan = generate(List.of(
-                        issue(1, "SILENCE", "HIGH", 1_000, 5_000),
-                        issue(2, "SILENCE", "HIGH", 4_000, 7_000)),
+                        issue(1, "SILENCE", "HIGH", 1_000, 2_500),
+                        issue(2, "SILENCE", "HIGH", 2_000, 3_500)),
                 loudnessReport("NORMAL"), 10_000,
                 preferences(ProcessingStrategy.BALANCED));
 
-        assertEquals(4_000L, plan.estimatedOutputDurationMs());
+        assertEquals(7_500L, plan.estimatedOutputDurationMs());
+    }
+
+    @Test
+    void longSilenceIssuesAggregateIntoSingleCompressCleanup() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "SILENCE", "HIGH", 1_000, 5_000),
+                        issue(2, "SILENCE", "MEDIUM", 6_000, 9_000),
+                        issue(3, "SILENCE", "HIGH", 2_000, 6_000)),
+                loudnessReport("NORMAL"), 10_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        assertEquals(List.of(ProcessingOperationType.SILENCE_CLEANUP),
+                plan.steps().stream().map(
+                        ProcessingStepDraft::operationType).toList());
+        ProcessingStepDraft cleanup = plan.steps().getFirst();
+        assertEquals("COMPRESS", cleanup.parameters().get("mode"));
+        assertEquals(3_000L, cleanup.parameters().get("minSilenceMs"));
+        assertEquals(800L, cleanup.parameters().get("keepSilenceMs"));
+        assertEquals(1L, cleanup.sourceIssueId());
+        assertEquals(null, cleanup.startMs());
+        assertEquals(null, cleanup.endMs());
+    }
+
+    @Test
+    void shortSilenceStillPlansTrimSegmentInsteadOfCleanup() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "SILENCE", "HIGH", 1_000, 3_000)),
+                loudnessReport("NORMAL"), 8_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        assertEquals(List.of(ProcessingOperationType.TRIM_SEGMENT),
+                plan.steps().stream().map(
+                        ProcessingStepDraft::operationType).toList());
+    }
+
+    @Test
+    void silenceCleanupEstimateRemovesCompressedSilenceOnly() {
+        ProcessingPlanDraft plan = generate(List.of(
+                        issue(1, "SILENCE", "HIGH", 1_000, 5_000),
+                        issue(2, "SILENCE", "HIGH", 6_000, 9_000)),
+                loudnessReport("NORMAL"), 10_000,
+                preferences(ProcessingStrategy.BALANCED));
+
+        // 4s silence keeps 0.8s -> 3.2s removed; 3s silence keeps 0.8s
+        // -> 2.2s removed; total removed 5.4s.
+        assertEquals(4_600L, plan.estimatedOutputDurationMs());
     }
 
     @Test

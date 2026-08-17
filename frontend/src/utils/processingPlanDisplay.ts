@@ -11,6 +11,7 @@ const OPERATION_LABELS: Record<ProcessingOperationType, string> = {
   NORMALIZE_VOLUME: '整段音量标准化',
   TRIM_SEGMENT: '裁剪指定片段',
   DENOISE: '智能降噪',
+  SILENCE_CLEANUP: '长静音处理',
   REVIEW_SILENCE: '检查静音片段',
   TRIM_SILENCE: '缩短较长静音',
   INCREASE_GAIN: '提升局部音量',
@@ -41,6 +42,7 @@ const RISK_LABELS: Record<ProcessingRiskLevel, string> = {
 const WHOLE_AUDIO_OPERATIONS = new Set<ProcessingOperationType>([
   'NORMALIZE_VOLUME',
   'DENOISE',
+  'SILENCE_CLEANUP',
   'NORMALIZE_LOUDNESS',
   'LIMIT_PEAK',
 ])
@@ -49,6 +51,7 @@ const EXECUTABLE_OPERATIONS = new Set<ProcessingOperationType>([
   'NORMALIZE_VOLUME',
   'TRIM_SEGMENT',
   'DENOISE',
+  'SILENCE_CLEANUP',
 ])
 
 export function isExecutableProcessingOperation(operation: ProcessingOperationType) {
@@ -60,7 +63,16 @@ export interface ParameterDisplayItem {
   value: string
 }
 
-export function getOperationLabel(operationType: ProcessingOperationType, fallback?: string) {
+export function getOperationLabel(
+  operationType: ProcessingOperationType,
+  fallback?: string,
+  step?: ProcessingStep,
+) {
+  if (operationType === 'SILENCE_CLEANUP') {
+    const mode = step?.parameters?.mode
+    if (mode === 'REMOVE') return '删除长静音'
+    if (mode === 'COMPRESS') return '压缩长静音'
+  }
   return OPERATION_LABELS[operationType] || fallback || '音频处理建议'
 }
 
@@ -108,6 +120,10 @@ function formatNumber(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '')
 }
 
+function formatSeconds(ms: number) {
+  return `${formatNumber(ms / 1000)} 秒`
+}
+
 function formatSignedDb(value: number) {
   return `${value > 0 ? '+' : ''}${formatNumber(value)} dB`
 }
@@ -152,6 +168,23 @@ export function getParameterDisplayItems(step: ProcessingStep): ParameterDisplay
     case 'DENOISE': {
       const strength = strengthLabel(parameters.strength)
       items.push({ label: '降噪强度', value: strength || '按检测结果处理' })
+      items.push({ label: '处理范围', value: '整段音频' })
+      break
+    }
+    case 'SILENCE_CLEANUP': {
+      const mode = parameters.mode
+      const modeText = mode === 'REMOVE'
+        ? '删除长静音'
+        : mode === 'COMPRESS' ? '压缩长静音' : '压缩长静音'
+      items.push({ label: '处理模式', value: modeText })
+      const minMs = finiteNumber(parameters.minSilenceMs)
+      if (minMs !== null) {
+        items.push({ label: '处理阈值', value: `处理超过 ${formatSeconds(minMs)}的长停顿` })
+      }
+      const keepMs = finiteNumber(parameters.keepSilenceMs)
+      if (mode !== 'REMOVE' && keepMs !== null) {
+        items.push({ label: '保留停顿', value: `每段保留约 ${formatSeconds(keepMs)}自然停顿` })
+      }
       items.push({ label: '处理范围', value: '整段音频' })
       break
     }

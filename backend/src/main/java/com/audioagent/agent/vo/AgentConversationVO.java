@@ -12,6 +12,7 @@ public class AgentConversationVO {
 
     private String conversationId;
     private String transcriptId;
+    private String audioFileId;
     private String title;
     private String status;
     private String modelName;
@@ -32,7 +33,10 @@ public class AgentConversationVO {
                                                Long audioDurationMs) {
         return AgentConversationVO.builder()
                 .conversationId(source.getId().toString())
-                .transcriptId(source.getTranscriptId().toString())
+                .transcriptId(source.getTranscriptId() == null
+                        ? null : source.getTranscriptId().toString())
+                .audioFileId(source.getAudioFileId() == null
+                        ? null : source.getAudioFileId().toString())
                 .title(source.getTitle())
                 .status(source.getStatus().name())
                 .modelName(source.getModelName())

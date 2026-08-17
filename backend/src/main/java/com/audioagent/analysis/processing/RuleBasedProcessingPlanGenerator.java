@@ -40,12 +40,24 @@ public class RuleBasedProcessingPlanGenerator
         List<ProcessingStepDraft> candidates = new ArrayList<>();
         List<AudioIssueSegment> issues = context.issues() == null
                 ? List.of() : context.issues();
+        // Long silent pauses aggregate into a single whole-audio
+        // SILENCE_CLEANUP step; shorter silences keep the per-segment
+        // TRIM_SEGMENT behavior.
+        List<AudioIssueSegment> longSilences = new ArrayList<>();
         for (AudioIssueSegment issue : issues) {
+            if (isLongSilence(issue)) {
+                if (silenceExecutable(issue, preferences)) {
+                    longSilences.add(issue);
+                }
+                continue;
+            }
             ProcessingStepDraft trim = trimFromIssue(issue, preferences);
             if (trim != null) {
                 candidates.add(trim);
             }
         }
+        long silenceRemovedMs = addSilenceCleanupStep(longSilences,
+                candidates);
         addDenoiseStep(issues, candidates);
         addNormalizeStep(context.report(), candidates, preferences);
 
@@ -57,7 +69,7 @@ public class RuleBasedProcessingPlanGenerator
                 ? new ArrayList<>(deduplicated.subList(0, maxSteps))
                 : deduplicated;
         Long estimatedDuration = estimateDuration(context.result(),
-                finalSteps);
+                finalSteps, silenceRemovedMs);
         log.info("Processing plan limited to executable operations, taskId={}, "
                         + "trimCandidates={}, finalSteps={}",
                 context.task() == null ? null : context.task().getId(),
@@ -67,6 +79,32 @@ public class RuleBasedProcessingPlanGenerator
         return new ProcessingPlanDraft(ProcessingPlanStatus.READY,
                 summaryBuilder.build(finalSteps), estimatedDuration,
                 List.copyOf(finalSteps), 0, trimmedCount);
+    }
+
+    private boolean isLongSilence(AudioIssueSegment issue) {
+        return issue != null && issue.getIssueType() != null
+                && "SILENCE".equalsIgnoreCase(issue.getIssueType())
+                && issue.getStartMs() != null && issue.getEndMs() != null
+                && issue.getStartMs() >= 0
+                && issue.getEndMs() > issue.getStartMs()
+                && (issue.getEndMs() - issue.getStartMs())
+                >= properties.getProcessingPlan().getSilence()
+                .getLongSilenceMinMs();
+    }
+
+    private boolean silenceExecutable(
+            AudioIssueSegment issue,
+            UserProcessingPreferences preferences) {
+        ProcessingPriority priority = ProcessingPriority.fromSeverity(
+                issue.getSeverity());
+        return priority == ProcessingPriority.HIGH
+                ? properties.getProcessingPlan().getSilence()
+                .isHighTrimEnabled()
+                : priority == ProcessingPriority.MEDIUM
+                && preferences.processingStrategy()
+                == ProcessingStrategy.BALANCED
+                && properties.getProcessingPlan().getSilence()
+                .isMediumTrimEnabled();
     }
 
     private ProcessingStepDraft trimFromIssue(
@@ -81,20 +119,42 @@ public class RuleBasedProcessingPlanGenerator
         }
         ProcessingPriority priority = ProcessingPriority.fromSeverity(
                 issue.getSeverity());
-        boolean executable = priority == ProcessingPriority.HIGH
-                ? properties.getProcessingPlan().getSilence()
-                .isHighTrimEnabled()
-                : priority == ProcessingPriority.MEDIUM
-                && preferences.processingStrategy()
-                == ProcessingStrategy.BALANCED
-                && properties.getProcessingPlan().getSilence()
-                .isMediumTrimEnabled();
-        if (!executable) {
+        if (!silenceExecutable(issue, preferences)) {
             return null;
         }
         return build(ProcessingOperationType.TRIM_SEGMENT, issue.getId(),
                 issue.getStartMs(), issue.getEndMs(), priority,
                 Map.of("mode", REVIEW_BEFORE_APPLY));
+    }
+
+    private long addSilenceCleanupStep(
+            List<AudioIssueSegment> longSilences,
+            List<ProcessingStepDraft> candidates) {
+        if (longSilences == null || longSilences.isEmpty()) {
+            return 0;
+        }
+        long minSilenceMs = properties.getProcessingPlan().getSilence()
+                .getLongSilenceMinMs();
+        long keepSilenceMs = properties.getProcessingPlan().getSilence()
+                .getKeepSilenceMs();
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("mode", "COMPRESS");
+        parameters.put("minSilenceMs", minSilenceMs);
+        parameters.put("keepSilenceMs", keepSilenceMs);
+        AudioIssueSegment first = longSilences.get(0);
+        ProcessingPriority priority = longSilences.stream()
+                .map(issue -> ProcessingPriority.fromSeverity(
+                        issue.getSeverity()))
+                .max(Comparator.comparingInt(ProcessingPriority::rank))
+                .orElse(ProcessingPriority.MEDIUM);
+        candidates.add(build(ProcessingOperationType.SILENCE_CLEANUP,
+                first.getId(), null, null, priority, parameters));
+        long removed = 0;
+        for (AudioIssueSegment issue : longSilences) {
+            long duration = issue.getEndMs() - issue.getStartMs();
+            removed += Math.max(0, duration - keepSilenceMs);
+        }
+        return removed;
     }
 
     private void addDenoiseStep(
@@ -204,7 +264,8 @@ public class RuleBasedProcessingPlanGenerator
     }
 
     private Long estimateDuration(AudioAnalysisResult result,
-                                  List<ProcessingStepDraft> steps) {
+                                  List<ProcessingStepDraft> steps,
+                                  long silenceRemovedMs) {
         if (result == null || result.getDurationMs() == null
                 || result.getDurationMs() < 0) {
             return null;
@@ -238,6 +299,12 @@ public class RuleBasedProcessingPlanGenerator
         }
         if (currentStart >= 0) {
             removed += currentEnd - currentStart;
+        }
+        boolean hasSilenceCleanup = steps.stream().anyMatch(step ->
+                step.operationType()
+                        == ProcessingOperationType.SILENCE_CLEANUP);
+        if (hasSilenceCleanup) {
+            removed += Math.max(0, silenceRemovedMs);
         }
         return Math.max(0, duration - removed);
     }

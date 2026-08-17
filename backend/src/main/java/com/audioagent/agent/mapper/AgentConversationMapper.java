@@ -38,6 +38,9 @@ public interface AgentConversationMapper extends BaseMapper<AgentConversation> {
             <if test="transcriptId != null">
               AND transcript_id = #{transcriptId}
             </if>
+            <if test="audioFileId != null">
+              AND audio_file_id = #{audioFileId}
+            </if>
             <if test="status != null and status != ''">
               AND status = #{status}
             </if>
@@ -49,6 +52,7 @@ public interface AgentConversationMapper extends BaseMapper<AgentConversation> {
             Page<AgentConversation> page,
             @Param("userId") Long userId,
             @Param("transcriptId") Long transcriptId,
+            @Param("audioFileId") Long audioFileId,
             @Param("status") String status);
 
     @Update("""

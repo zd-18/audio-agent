@@ -1,5 +1,5 @@
 import { App as AntdApp } from 'antd'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +22,7 @@ import type {
   AgentConversation,
   AgentMessage,
   AgentMessagePair,
+  AgentProcessingWorkflow,
 } from '../../types/agent'
 import type { Transcript, TranscriptionTask } from '../../types/transcription'
 import AgentConversationPage from './AgentConversationPage'
@@ -89,6 +90,7 @@ function conversation(id = conversationId, updatedAt = '2026-08-04T10:00:00'): A
   return {
     conversationId: id,
     transcriptId,
+    audioFileId: null,
     title: id === conversationId ? '访谈录音.wav' : '第二个对话',
     status: 'ACTIVE',
     modelName: 'deepseek-v4-pro',
@@ -156,6 +158,38 @@ function pair(content = '这是 Agent 的回答。'): AgentMessagePair {
       replyToMessageId: '2084462342950039570',
       citations: [citation],
     }),
+  }
+}
+
+function processingWorkflow(
+  status: AgentProcessingWorkflow['status'] = 'WAITING_CONFIRMATION',
+): AgentProcessingWorkflow {
+  return {
+    workflowId: '2084462342950039600',
+    conversationId,
+    userMessageId: '2084462342950039570',
+    assistantMessageId: '2084462342950039571',
+    taskId,
+    audioFileId,
+    planId: '2084462342950039601',
+    confirmationId: '2084462342950039602',
+    executionId: status === 'WAITING_CONFIRMATION' ? null : '2084462342950039603',
+    resultFileId: null,
+    status,
+    summary: '压缩长静音',
+    steps: [{
+      order: 1,
+      operationType: 'SILENCE_CLEANUP',
+      title: '压缩长静音',
+      reason: '停顿过长',
+      startMs: null,
+      endMs: null,
+    }],
+    progressPercent: status === 'EXECUTING' ? 0 : null,
+    failureReason: null,
+    createdAt: '2026-08-17T10:00:00Z',
+    updatedAt: '2026-08-17T10:00:00Z',
+    finishedAt: null,
   }
 }
 
@@ -470,6 +504,61 @@ describe('AgentConversationPage', () => {
     await waitFor(() => expect(sendMessageMock).toHaveBeenCalled())
     expect(screen.queryByText('本次回答生成失败')).not.toBeInTheDocument()
     expect(screen.queryByText('问题未成功发送')).not.toBeInTheDocument()
+  })
+
+  it('moves SILENCE_CLEANUP into processing after confirm succeeds', async () => {
+    const waiting = processingWorkflow()
+    getMessagesMock.mockResolvedValue({
+      records: [pair().assistantMessage], current: 1, size: 50, total: 1, pages: 1,
+    })
+    getWorkflowsMock.mockResolvedValue([waiting])
+    confirmWorkflowMock.mockResolvedValue(processingWorkflow('EXECUTING'))
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: '确认并开始处理' }))
+
+    expect(await screen.findByText('正在处理')).toBeInTheDocument()
+    expect(confirmWorkflowMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('问题未成功发送')).not.toBeInTheDocument()
+  })
+
+  it('sends only one confirm request for one rapid double click', async () => {
+    const waiting = processingWorkflow()
+    let resolveConfirm!: (workflow: AgentProcessingWorkflow) => void
+    confirmWorkflowMock.mockReturnValue(new Promise((resolve) => { resolveConfirm = resolve }))
+    getMessagesMock.mockResolvedValue({
+      records: [pair().assistantMessage], current: 1, size: 50, total: 1, pages: 1,
+    })
+    getWorkflowsMock.mockResolvedValue([waiting])
+    renderPage()
+
+    const confirmButton = await screen.findByRole('button', { name: '确认并开始处理' })
+    act(() => {
+      confirmButton.click()
+      confirmButton.click()
+    })
+
+    expect(confirmWorkflowMock).toHaveBeenCalledTimes(1)
+    resolveConfirm(processingWorkflow('EXECUTING'))
+    expect(await screen.findByText('正在处理')).toBeInTheDocument()
+  })
+
+  it('shows a sanitized audio-processing error when confirm fails', async () => {
+    getMessagesMock.mockResolvedValue({
+      records: [pair().assistantMessage], current: 1, size: 50, total: 1, pages: 1,
+    })
+    getWorkflowsMock.mockResolvedValue([processingWorkflow()])
+    confirmWorkflowMock.mockRejectedValue(new ApiError(
+      'targetLufs must be a finite number', 40917,
+    ))
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: '确认并开始处理' }))
+
+    expect(await screen.findByText('音频处理操作失败')).toBeInTheDocument()
+    expect(screen.getByText('音频处理未能启动，请稍后重试。')).toBeInTheDocument()
+    expect(screen.queryByText('问题未成功发送')).not.toBeInTheDocument()
+    expect(screen.queryByText(/targetLufs|NaN|FFmpeg/i)).not.toBeInTheDocument()
   })
 
   it('loads the matching history after a conversation switch', async () => {

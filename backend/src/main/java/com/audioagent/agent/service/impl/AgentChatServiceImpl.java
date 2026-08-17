@@ -177,10 +177,20 @@ public class AgentChatServiceImpl implements AgentChatService {
             throw new BusinessException(
                     ErrorCode.AGENT_CONVERSATION_STATUS_INVALID);
         }
-        AudioTranscript transcript = transcriptMapper.selectOwned(
-                userId, conversation.getTranscriptId());
-        if (transcript == null) {
-            throw new BusinessException(ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND);
+        Long transcriptId = conversation.getTranscriptId();
+        if (request.mode() == AgentRequestMode.CHAT
+                && transcriptId == null) {
+            // 内容问答依赖文字稿；没有文字稿的会话只允许音频处理。
+            throw new BusinessException(ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND,
+                    "Content Q&A requires a transcript");
+        }
+        if (transcriptId != null) {
+            AudioTranscript transcript = transcriptMapper.selectOwned(
+                    userId, transcriptId);
+            if (transcript == null) {
+                throw new BusinessException(
+                        ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND);
+            }
         }
 
         int sequence = messageMapper.selectMaxSequenceNo(conversationId);

@@ -199,6 +199,58 @@ class ProcessingParameterValidatorTest {
                 Map.of("suggestedGainDb", Double.NaN)));
     }
 
+    @Test
+    void acceptsSilenceCleanupCompressParameters() {
+        Map<String, Object> result = validator.mergeAndValidate(
+                step("SILENCE_CLEANUP", null, null),
+                Map.of("mode", "COMPRESS", "minSilenceMs", 3000,
+                        "keepSilenceMs", 800),
+                Map.of("minSilenceMs", 4000, "keepSilenceMs", 1000));
+
+        assertEquals("COMPRESS", result.get("mode"));
+        assertEquals(4000, result.get("minSilenceMs"));
+        assertEquals(1000, result.get("keepSilenceMs"));
+    }
+
+    @Test
+    void rejectsUnknownSilenceCleanupMode() {
+        assertParameterInvalid(() -> validator.mergeAndValidate(
+                step("SILENCE_CLEANUP", null, null),
+                Map.of("mode", "COMPRESS", "minSilenceMs", 3000,
+                        "keepSilenceMs", 800),
+                Map.of("mode", "TRUNCATE")));
+    }
+
+    @Test
+    void rejectsSilenceCleanupMinSilenceBelowFloor() {
+        assertParameterInvalid(() -> validator.mergeAndValidate(
+                step("SILENCE_CLEANUP", null, null),
+                Map.of("mode", "COMPRESS", "minSilenceMs", 3000,
+                        "keepSilenceMs", 800),
+                Map.of("minSilenceMs", 500)));
+    }
+
+    @Test
+    void rejectsSilenceCleanupKeepAtLeastAsLongAsMinSilence() {
+        assertParameterInvalid(() -> validator.mergeAndValidate(
+                step("SILENCE_CLEANUP", null, null),
+                Map.of("mode", "COMPRESS", "minSilenceMs", 3000,
+                        "keepSilenceMs", 800),
+                Map.of("keepSilenceMs", 3000)));
+    }
+
+    @Test
+    void acceptsRemoveModeWithoutKeepConstraint() {
+        Map<String, Object> result = validator.mergeAndValidate(
+                step("SILENCE_CLEANUP", null, null),
+                Map.of("mode", "REMOVE", "minSilenceMs", 3000,
+                        "keepSilenceMs", 2000),
+                Map.of("mode", "REMOVE"));
+
+        assertEquals("REMOVE", result.get("mode"));
+        assertEquals(2000, result.get("keepSilenceMs"));
+    }
+
     private AudioProcessingStep step(String operation, Long start, Long end) {
         AudioProcessingStep step = new AudioProcessingStep();
         step.setOperationType(operation);

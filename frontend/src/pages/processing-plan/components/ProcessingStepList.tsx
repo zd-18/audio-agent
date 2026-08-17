@@ -42,7 +42,7 @@ export default function ProcessingStepList({
             >
               <span className="processing-step-list__order">{String(step.stepOrder).padStart(2, '0')}</span>
               <span className="processing-step-list__body">
-                <strong>{getOperationLabel(step.operationType, step.title)}</strong>
+                <strong>{getOperationLabel(step.operationType, step.title, step)}</strong>
                 <small>
                   {hasSegmentRange(step)
                     ? `${formatTimestamp(step.startMs)} – ${formatTimestamp(step.endMs)}`

@@ -6,6 +6,7 @@ export type ProcessingOperationType =
   | 'NORMALIZE_VOLUME'
   | 'TRIM_SEGMENT'
   | 'DENOISE'
+  | 'SILENCE_CLEANUP'
   | 'REVIEW_SILENCE'
   | 'TRIM_SILENCE'
   | 'INCREASE_GAIN'
@@ -28,6 +29,8 @@ export interface ProcessingStepParameters {
   targetLufs?: number
   truePeakLimitDbfs?: number
   mode?: string
+  minSilenceMs?: number
+  keepSilenceMs?: number
   [key: string]: unknown
 }
 

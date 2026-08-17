@@ -20,6 +20,10 @@ public class ProcessingParameterValidator {
     private static final BigDecimal MAX_TARGET_LUFS = BigDecimal.valueOf(-8);
     private static final BigDecimal MIN_TRUE_PEAK_DBFS = BigDecimal.valueOf(-6);
     private static final BigDecimal MAX_TRUE_PEAK_DBFS = BigDecimal.ZERO;
+    private static final long MIN_SILENCE_MS = 1000;
+    private static final long MAX_SILENCE_MS = 60000;
+    private static final long MIN_KEEP_MS = 100;
+    private static final long MAX_KEEP_MS = 3000;
 
     private final AnalysisProperties properties;
 
@@ -49,6 +53,8 @@ public class ProcessingParameterValidator {
             case NORMALIZE_VOLUME -> Set.of(
                     "targetLufs", "truePeakLimitDbfs");
             case DENOISE -> Set.of("strength");
+            case SILENCE_CLEANUP -> Set.of(
+                    "mode", "minSilenceMs", "keepSilenceMs");
             case TRIM_SILENCE -> Set.of(
                     "suggestedKeepHeadMs", "suggestedKeepTailMs");
             case INCREASE_GAIN, DECREASE_GAIN -> Set.of("suggestedGainDb");
@@ -68,6 +74,7 @@ public class ProcessingParameterValidator {
             case TRIM_SEGMENT -> validateSegmentRange(step);
             case NORMALIZE_VOLUME -> validateNormalization(parameters);
             case DENOISE -> validateDenoiseStrength(parameters);
+            case SILENCE_CLEANUP -> validateSilenceCleanup(parameters);
             case TRIM_SILENCE -> validateTrim(step, parameters);
             case INCREASE_GAIN -> validateGain(parameters, true);
             case DECREASE_GAIN -> validateGain(parameters, false);
@@ -145,6 +152,32 @@ public class ProcessingParameterValidator {
                 || !("LIGHT".equals(strength) || "MEDIUM".equals(strength)
                 || "STRONG".equals(strength))) {
             throw invalid("strength must be LIGHT, MEDIUM or STRONG");
+        }
+    }
+
+    private void validateSilenceCleanup(Map<String, Object> parameters) {
+        Object modeValue = parameters.get("mode");
+        if (modeValue != null && (!(modeValue instanceof String mode)
+                || !("COMPRESS".equals(mode) || "REMOVE".equals(mode)))) {
+            throw invalid("mode must be COMPRESS or REMOVE");
+        }
+        BigDecimal minSilence = number(parameters, "minSilenceMs");
+        if (minSilence.compareTo(BigDecimal.valueOf(MIN_SILENCE_MS)) < 0
+                || minSilence.compareTo(BigDecimal.valueOf(MAX_SILENCE_MS)) > 0) {
+            throw invalid("minSilenceMs must be between " + MIN_SILENCE_MS
+                    + " and " + MAX_SILENCE_MS);
+        }
+        Object keepValue = parameters.get("keepSilenceMs");
+        if (keepValue != null) {
+            BigDecimal keep = number(parameters, "keepSilenceMs");
+            if (keep.compareTo(BigDecimal.valueOf(MIN_KEEP_MS)) < 0
+                    || keep.compareTo(BigDecimal.valueOf(MAX_KEEP_MS)) > 0) {
+                throw invalid("keepSilenceMs must be between " + MIN_KEEP_MS
+                        + " and " + MAX_KEEP_MS);
+            }
+            if ("COMPRESS".equals(modeValue) && keep.compareTo(minSilence) >= 0) {
+                throw invalid("keepSilenceMs must be shorter than minSilenceMs");
+            }
         }
     }
 

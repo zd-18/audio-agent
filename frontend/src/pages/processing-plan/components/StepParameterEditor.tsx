@@ -17,7 +17,7 @@ export default function StepParameterEditor({
   readOnly,
   onChange,
 }: StepParameterEditorProps) {
-  const definitions = getEditableParameterDefinitions(step.operationType)
+  const definitions = getEditableParameterDefinitions(step.operationType, values)
 
   if (definitions.length === 0) {
     return (

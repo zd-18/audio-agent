@@ -46,3 +46,5 @@ asr-service/.env
 
 # Local test audio
 test-audio/
+
+/.jvm-tmp/

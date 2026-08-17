@@ -10,7 +10,8 @@ public interface AgentConversationService {
                                CreateAgentConversationRequest request);
 
     PageResult<AgentConversationVO> list(Long userId, int current, int size,
-                                         String transcriptId, String status);
+                                         String transcriptId,
+                                         String audioFileId, String status);
 
     AgentConversationVO get(Long userId, String conversationId);
 }

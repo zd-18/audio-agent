@@ -1,4 +1,4 @@
-import { CloudUploadOutlined, DownloadOutlined, DownOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons'
+import { CloudUploadOutlined, DownloadOutlined, DownOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, ToolOutlined, UndoOutlined } from '@ant-design/icons'
 import { Alert, Button, Dropdown, Input, Select, Table, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -28,7 +28,7 @@ const FILE_STATUSES = [
 const PAGE_SIZES = [10, 20, 50]
 
 /** 所有列宽之和（scroll.x 必须等于该值，fixed 列才能精确对齐） */
-const TABLE_MIN_WIDTH = 1310
+const TABLE_MIN_WIDTH = 1380
 
 function parsePageNumber(value: string | null, fallback: number) {
   const parsed = Number(value)
@@ -159,10 +159,11 @@ export default function AudioFileLookupPage() {
       title: '操作',
       key: 'actions',
       fixed: fixedActions ? 'right' : undefined,
-      width: 260,
+      width: 330,
       render: (_, record) => (
         <div className="audio-file-list__actions">
           <Link to={`/audio/files/${record.audioFileId}`}><Button type="link" size="small" icon={<EyeOutlined />}>详情</Button></Link>
+          <Link to={`/audio/files/${record.audioFileId}/agent`}><Button type="link" size="small" icon={<ToolOutlined />}>智能处理</Button></Link>
           <CreateAnalysisTaskButton audioFileId={record.audioFileId} fileName={record.originalFileName} buttonType="link" size="small" label="创建任务" />
           <Dropdown
             menu={{

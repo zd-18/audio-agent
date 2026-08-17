@@ -18,12 +18,13 @@ export function normalizeAgentMessages(messages: AgentMessage[] | null | undefin
 
 export function selectLatestActiveConversation(
   conversations: AgentConversation[],
-  transcriptId: string,
+  entryId: string | null | undefined,
+  entryField: 'transcriptId' | 'audioFileId',
 ) {
   return conversations
     .filter((conversation) => (
-      conversation.transcriptId === transcriptId
-      && conversation.status === 'ACTIVE'
+      conversation.status === 'ACTIVE'
+      && conversation[entryField] === entryId
     ))
     .sort((left, right) => {
       const leftTime = Date.parse(left.lastMessageAt || left.updatedAt || left.createdAt)

@@ -44,16 +44,6 @@ const EDITABLE_PARAMETERS: Record<ProcessingOperationType, EditableParameterDefi
       step: 0.1,
       helper: '允许范围 -24 至 -8 LUFS。',
     },
-    {
-      key: 'truePeakLimitDbfs',
-      label: '真峰值上限',
-      unit: 'dBFS',
-      kind: 'number',
-      min: -6,
-      max: 0,
-      step: 0.1,
-      helper: '允许范围 -6 至 0 dBFS。',
-    },
   ],
   TRIM_SEGMENT: [],
   DENOISE: [
@@ -67,6 +57,38 @@ const EDITABLE_PARAMETERS: Record<ProcessingOperationType, EditableParameterDefi
         { value: 'STRONG', label: '强力' },
       ],
       helper: '轻度适合轻微底噪，强力适合明显持续噪声。',
+    },
+  ],
+  SILENCE_CLEANUP: [
+    {
+      key: 'mode',
+      label: '处理模式',
+      kind: 'select',
+      options: [
+        { value: 'COMPRESS', label: '压缩长静音（保留少量自然停顿）' },
+        { value: 'REMOVE', label: '删除长静音' },
+      ],
+      helper: '压缩会保留约 1 秒自然停顿，删除则完全去掉长停顿。',
+    },
+    {
+      key: 'minSilenceMs',
+      label: '处理阈值',
+      unit: 'ms',
+      kind: 'number',
+      min: 1000,
+      max: 60000,
+      step: 500,
+      helper: '只处理超过该时长的连续静音（默认 3000ms = 3 秒）。',
+    },
+    {
+      key: 'keepSilenceMs',
+      label: '保留停顿',
+      unit: 'ms',
+      kind: 'number',
+      min: 100,
+      max: 3000,
+      step: 100,
+      helper: '压缩模式下每段静音保留的自然停顿长度，需短于处理阈值。',
     },
   ],
   REVIEW_SILENCE: [],
@@ -164,8 +186,15 @@ const EDITABLE_PARAMETERS: Record<ProcessingOperationType, EditableParameterDefi
   ],
 }
 
-export function getEditableParameterDefinitions(operationType: ProcessingOperationType) {
-  return EDITABLE_PARAMETERS[operationType]
+export function getEditableParameterDefinitions(
+  operationType: ProcessingOperationType,
+  parameterValues: Record<string, unknown> = {},
+) {
+  const definitions = EDITABLE_PARAMETERS[operationType]
+  if (operationType === 'SILENCE_CLEANUP' && parameterValues.mode === 'REMOVE') {
+    return definitions.filter((definition) => definition.key !== 'keepSilenceMs')
+  }
+  return definitions
 }
 
 function parameterText(value: unknown) {
@@ -175,7 +204,10 @@ function parameterText(value: unknown) {
 
 export function createStepEditorDraft(step: ProcessingStepConfirmation): StepEditorDraft {
   const parameterValues: Record<string, string> = {}
-  for (const definition of getEditableParameterDefinitions(step.operationType)) {
+  for (const definition of getEditableParameterDefinitions(
+    step.operationType,
+    step.effectiveParameters,
+  )) {
     parameterValues[definition.key] = parameterText(step.effectiveParameters[definition.key])
   }
   return {
@@ -188,7 +220,10 @@ export function createStepEditorDraft(step: ProcessingStepConfirmation): StepEdi
 
 export function createOriginalParameterValues(step: ProcessingStepConfirmation) {
   const parameterValues: Record<string, string> = {}
-  for (const definition of getEditableParameterDefinitions(step.operationType)) {
+  for (const definition of getEditableParameterDefinitions(
+    step.operationType,
+    step.originalParameters,
+  )) {
     parameterValues[definition.key] = parameterText(step.originalParameters[definition.key])
   }
   return parameterValues
@@ -240,7 +275,10 @@ export function buildStepUpdatePayload(
   const parameterOverrides: ProcessingParameterMap = {}
   const effectiveValues: ProcessingParameterMap = {}
 
-  for (const definition of getEditableParameterDefinitions(step.operationType)) {
+  for (const definition of getEditableParameterDefinitions(
+    step.operationType,
+    draft.parameterValues,
+  )) {
     const parsed = parseParameter(draft.parameterValues[definition.key] ?? '', definition, fieldErrors)
     if (parsed !== null) {
       effectiveValues[definition.key] = parsed
@@ -248,6 +286,26 @@ export function buildStepUpdatePayload(
         parameterOverrides[definition.key] = parsed
       }
     }
+  }
+
+  if (step.operationType === 'SILENCE_CLEANUP'
+    && effectiveValues.mode === 'COMPRESS'
+    && typeof effectiveValues.minSilenceMs === 'number'
+    && typeof effectiveValues.keepSilenceMs === 'number'
+    && effectiveValues.keepSilenceMs >= effectiveValues.minSilenceMs) {
+    fieldErrors.keepSilenceMs = '保留停顿必须短于处理阈值'
+  }
+
+  if (step.operationType === 'TRIM_SEGMENT') {
+    const validStart = typeof step.startMs === 'number'
+      && Number.isFinite(step.startMs)
+      && step.startMs >= 0
+    const validEnd = typeof step.endMs === 'number'
+      && Number.isFinite(step.endMs)
+      && validStart
+      && step.endMs > step.startMs!
+    if (!validStart) fieldErrors.startMs = '裁剪开始时间无效'
+    if (!validEnd) fieldErrors.endMs = '裁剪结束时间无效'
   }
 
   if (step.operationType === 'TRIM_SILENCE'

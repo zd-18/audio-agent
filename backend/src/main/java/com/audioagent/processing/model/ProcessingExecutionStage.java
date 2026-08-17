@@ -4,6 +4,7 @@ public enum ProcessingExecutionStage {
     PREPARING,
     LOCAL_PROCESSING,
     TRIMMING,
+    SILENCE_CLEANING,
     DENOISING,
     LOUDNESS_NORMALIZING,
     PEAK_LIMITING,

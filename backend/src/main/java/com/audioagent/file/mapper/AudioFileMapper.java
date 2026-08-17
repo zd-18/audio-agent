@@ -22,7 +22,6 @@ public interface AudioFileMapper extends BaseMapper<AudioFile> {
             SELECT COALESCE(MAX(version_no), 0) + 1
             FROM audio_file
             WHERE root_audio_file_id = #{rootAudioFileId}
-              AND deleted = 0
             """)
     Integer selectNextVersionNo(
             @Param("rootAudioFileId") Long rootAudioFileId);
@@ -30,7 +29,6 @@ public interface AudioFileMapper extends BaseMapper<AudioFile> {
     @Select("""
             SELECT * FROM audio_file
             WHERE source_execution_id = #{executionId}
-              AND deleted = 0
             LIMIT 1
             """)
     AudioFile selectBySourceExecutionId(

@@ -14,7 +14,8 @@ export type AgentWorkflowStatus =
 
 export interface AgentConversation {
   conversationId: ResourceId
-  transcriptId: ResourceId
+  transcriptId: ResourceId | null
+  audioFileId: ResourceId | null
   title: string
   status: AgentConversationStatus
   modelName: string
@@ -61,7 +62,8 @@ export interface AgentMessage {
 export type AgentMessagePage = PageResult<AgentMessage>
 
 export interface CreateAgentConversationRequest {
-  transcriptId: ResourceId
+  transcriptId?: ResourceId | null
+  audioFileId?: ResourceId | null
   title: string | null
 }
 
@@ -79,7 +81,7 @@ export interface AgentMessagePair {
 
 export interface AgentProcessingWorkflowStep {
   order: number
-  operationType: 'NORMALIZE_VOLUME' | 'TRIM_SEGMENT'
+  operationType: 'NORMALIZE_VOLUME' | 'TRIM_SEGMENT' | 'DENOISE' | 'SILENCE_CLEANUP'
   title: string
   reason: string | null
   startMs: number | null

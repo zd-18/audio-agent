@@ -46,15 +46,33 @@ public class AgentConversationServiceImpl
         if (request == null) {
             throw new BusinessException(ErrorCode.PARAM_INVALID);
         }
-        Long transcriptId = parseId(request.getTranscriptId(),
+        Long transcriptId = request.getTranscriptId() == null ? null
+                : parseId(request.getTranscriptId(),
                 "transcriptId is invalid");
-        AudioTranscript transcript = transcriptMapper.selectOwned(
-                userId, transcriptId);
-        if (transcript == null) {
-            throw new BusinessException(ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND);
+        Long audioFileId = request.getAudioFileId() == null ? null
+                : parseId(request.getAudioFileId(),
+                "audioFileId is invalid");
+        if (transcriptId == null && audioFileId == null) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "transcriptId or audioFileId is required");
         }
-        AudioFile audioFile = ownedAudioFile(userId,
-                transcript.getAudioFileId());
+        AudioFile audioFile;
+        if (transcriptId != null) {
+            AudioTranscript transcript = transcriptMapper.selectOwned(
+                    userId, transcriptId);
+            if (transcript == null) {
+                throw new BusinessException(
+                        ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND);
+            }
+            audioFile = ownedAudioFile(userId,
+                    transcript.getAudioFileId());
+        } else {
+            audioFile = ownedAudioFile(userId, audioFileId);
+            if (audioFile == null) {
+                throw new BusinessException(
+                        ErrorCode.AUDIO_FILE_NOT_FOUND);
+            }
+        }
         String defaultTitle = audioFile != null
                 && StringUtils.hasText(audioFile.getOriginalName())
                 ? audioFile.getOriginalName().trim() : FALLBACK_TITLE;
@@ -68,6 +86,8 @@ public class AgentConversationServiceImpl
         AgentConversation conversation = new AgentConversation();
         conversation.setUserId(userId);
         conversation.setTranscriptId(transcriptId);
+        conversation.setAudioFileId(audioFile != null
+                ? audioFile.getId() : audioFileId);
         conversation.setTitle(title);
         conversation.setStatus(AgentConversationStatus.ACTIVE);
         conversation.setModelName(properties.getModelName());
@@ -90,11 +110,13 @@ public class AgentConversationServiceImpl
     @Transactional(readOnly = true)
     public PageResult<AgentConversationVO> list(
             Long userId, int current, int size,
-            String transcriptId, String status) {
+            String transcriptId, String audioFileId, String status) {
         requireUser(userId);
         requirePage(current, size, 100);
         Long parsedTranscriptId = StringUtils.hasText(transcriptId)
                 ? parseId(transcriptId, "transcriptId is invalid") : null;
+        Long parsedAudioFileId = StringUtils.hasText(audioFileId)
+                ? parseId(audioFileId, "audioFileId is invalid") : null;
         String normalizedStatus = null;
         if (StringUtils.hasText(status)) {
             try {
@@ -107,7 +129,7 @@ public class AgentConversationServiceImpl
         }
         IPage<AgentConversation> page = conversationMapper.selectOwnedPage(
                 new Page<>(current, size), userId,
-                parsedTranscriptId, normalizedStatus);
+                parsedTranscriptId, parsedAudioFileId, normalizedStatus);
         return PageResult.of(page.getRecords().stream()
                         .map(AgentConversationVO::from).toList(),
                 page.getCurrent(), page.getSize(), page.getTotal());
@@ -120,18 +142,28 @@ public class AgentConversationServiceImpl
         AgentConversation conversation = requireOwned(
                 userId, parseId(conversationId,
                         "conversationId is invalid"));
-        AudioTranscript transcript = transcriptMapper.selectOwned(
-                userId, conversation.getTranscriptId());
-        if (transcript == null) {
-            throw new BusinessException(ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND);
+        Long transcriptId = conversation.getTranscriptId();
+        if (transcriptId != null) {
+            AudioTranscript transcript = transcriptMapper.selectOwned(
+                    userId, transcriptId);
+            if (transcript == null) {
+                throw new BusinessException(
+                        ErrorCode.AGENT_TRANSCRIPT_NOT_FOUND);
+            }
+            AudioFile audioFile = ownedAudioFile(userId,
+                    transcript.getAudioFileId());
+            return AgentConversationVO.detailed(conversation,
+                    audioFile == null ? null : audioFile.getOriginalName(),
+                    transcript.getDurationMs() != null
+                            ? transcript.getDurationMs()
+                            : audioFile == null ? null
+                            : audioFile.getDurationMs());
         }
         AudioFile audioFile = ownedAudioFile(userId,
-                transcript.getAudioFileId());
+                conversation.getAudioFileId());
         return AgentConversationVO.detailed(conversation,
                 audioFile == null ? null : audioFile.getOriginalName(),
-                transcript.getDurationMs() != null
-                        ? transcript.getDurationMs()
-                        : audioFile == null ? null : audioFile.getDurationMs());
+                audioFile == null ? null : audioFile.getDurationMs());
     }
 
     private AgentConversation requireOwned(Long userId,

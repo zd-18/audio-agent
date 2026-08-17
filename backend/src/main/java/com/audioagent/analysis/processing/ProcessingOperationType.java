@@ -4,6 +4,7 @@ public enum ProcessingOperationType {
     NORMALIZE_VOLUME,
     TRIM_SEGMENT,
     DENOISE,
+    SILENCE_CLEANUP,
 
     // Legacy values remain readable for existing plans. New execution
     // snapshots accept only the operations above.
@@ -17,6 +18,6 @@ public enum ProcessingOperationType {
 
     public boolean isExecutable() {
         return this == NORMALIZE_VOLUME || this == TRIM_SEGMENT
-                || this == DENOISE;
+                || this == DENOISE || this == SILENCE_CLEANUP;
     }
 }

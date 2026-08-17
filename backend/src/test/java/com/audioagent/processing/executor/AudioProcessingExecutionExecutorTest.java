@@ -46,7 +46,7 @@ class AudioProcessingExecutionExecutorTest {
         pipeline = mock(AudioProcessingPipeline.class);
         workDirectories = mock(ProcessingExecutionWorkDirectory.class);
         executor = new AudioProcessingExecutionExecutor(executionMapper,
-                stepMapper, fileMapper, new AudioVersionSummaryBuilder(),
+                stepMapper, fileMapper, new AudioVersionSummaryBuilder(new ObjectMapper()),
                 mock(MinioStorageService.class),
                 new MinioProperties(), pipeline,
                 mock(AudioMetadataProbe.class),

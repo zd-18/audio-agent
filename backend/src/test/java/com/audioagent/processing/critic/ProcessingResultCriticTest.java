@@ -60,6 +60,22 @@ class ProcessingResultCriticTest {
                 5_000, List.of(step("SUCCESS", "DENOISE")), 1));
     }
 
+    @Test
+    void acceptsShorterDurationAfterSilenceCleanup() throws Exception {
+        // SILENCE_CLEANUP（COMPRESS/REMOVE）会按检测结果缩短输出时长。
+        // 执行管线会把缩短后的精确时长作为预期值传给 Critic，因此实际
+        // 时长与缩短后的预期一致即可通过，不会被"处理前后时长必须基本
+        // 一致"的规则误判；同时极短/空输出仍会被 minimumOutputDurationMs
+        // 拦截。
+        ProcessingResultCritic critic = new ProcessingResultCritic(
+                new ProcessingOutputValidator(properties()));
+        Path output = Files.write(tempDirectory.resolve("result.wav"),
+                new byte[64]);
+
+        assertDoesNotThrow(() -> critic.review(output, metadata(3_000),
+                3_000, List.of(step("SUCCESS", "SILENCE_CLEANUP")), 1));
+    }
+
     private AudioProcessingProperties properties() {
         AudioProcessingProperties properties = new AudioProcessingProperties();
         properties.getValidation().setMinimumOutputSizeBytes(1);
