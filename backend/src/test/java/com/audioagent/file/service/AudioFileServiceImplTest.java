@@ -2,6 +2,7 @@ package com.audioagent.file.service;
 
 import com.audioagent.common.api.PageResult;
 import com.audioagent.common.enums.FileStatus;
+import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.file.mapper.AudioFileMapper;
@@ -79,6 +80,7 @@ class AudioFileServiceImplTest {
         assertEquals(10, pageCaptor.getValue().getSize());
         String sql = wrapperCaptor.getValue().getSqlSegment();
         assertTrue(sql.contains("user_id"));
+        assertTrue(parameters(wrapperCaptor.getValue()).containsValue(7L));
         assertTrue(sql.contains("created_at"));
         assertFalse(sql.contains("original_name"));
         assertFalse(sql.contains("file_status"));
@@ -129,6 +131,42 @@ class AudioFileServiceImplTest {
         assertEquals(40000, exception.getCode());
         assertTrue(exception.getMessage().contains("between 1 and 100"));
         verifyNoInteractions(audioFileMapper);
+    }
+
+    @Test
+    void foreignAndMissingFileDetailsUseSameNotFoundSemantics() {
+        AudioFile foreign = audioFile(20L, "private.wav",
+                FileStatus.AVAILABLE);
+        foreign.setUserId(8L);
+        when(audioFileMapper.selectById(20L)).thenReturn(foreign);
+        when(audioFileMapper.selectById(21L)).thenReturn(null);
+
+        BusinessException foreignError = assertThrows(
+                BusinessException.class,
+                () -> service.getFileDetail(7L, 20L));
+        BusinessException missingError = assertThrows(
+                BusinessException.class,
+                () -> service.getFileDetail(7L, 21L));
+
+        assertEquals(ErrorCode.AUDIO_FILE_NOT_FOUND.getCode(),
+                foreignError.getCode());
+        assertEquals(foreignError.getCode(), missingError.getCode());
+        assertEquals(foreignError.getMessage(), missingError.getMessage());
+    }
+
+    @Test
+    void foreignDownloadIsRejectedBeforeAnyMinioRead() {
+        AudioFile foreign = audioFile(20L, "private.wav",
+                FileStatus.AVAILABLE);
+        foreign.setUserId(8L);
+        when(audioFileMapper.selectById(20L)).thenReturn(foreign);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.getFileForDownload(7L, 20L));
+
+        assertEquals(ErrorCode.AUDIO_FILE_NOT_FOUND.getCode(),
+                error.getCode());
+        verifyNoInteractions(minioStorageService);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

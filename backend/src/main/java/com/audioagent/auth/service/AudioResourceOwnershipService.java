@@ -20,11 +20,10 @@ public class AudioResourceOwnershipService {
     @Transactional(readOnly = true)
     public void requireFileOwned(Long userId, Long fileId) {
         AudioFile file = audioFileMapper.selectById(fileId);
-        if (file == null) {
-            throw new BusinessException(ErrorCode.AUDIO_FILE_NOT_FOUND);
-        }
-        if (!userId.equals(file.getUserId())) {
-            throw new BusinessException(ErrorCode.AUDIO_FILE_ACCESS_DENIED);
+        if (file == null || !userId.equals(file.getUserId())
+                || Integer.valueOf(1).equals(file.getDeleted())) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
     }
 
@@ -32,11 +31,13 @@ public class AudioResourceOwnershipService {
     public void requireTaskOwned(Long userId, Long taskId) {
         AudioAnalysisTask task = taskMapper.selectById(taskId);
         if (task == null) {
-            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND);
+            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
         AudioFile file = audioFileMapper.selectById(task.getAudioFileId());
         if (file == null || !userId.equals(file.getUserId())) {
-            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND);
+            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
     }
 }

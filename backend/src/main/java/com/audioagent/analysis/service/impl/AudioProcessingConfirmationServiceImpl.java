@@ -140,9 +140,10 @@ public class AudioProcessingConfirmationServiceImpl
             UpdateProcessingStepConfirmationRequest request) {
         requirePositive(confirmationId, "confirmationId");
         requirePositive(stepConfirmationId, "stepConfirmationId");
-        AudioProcessingConfirmation confirmation = loadForUpdate(
-                confirmationId);
-        AudioAnalysisTask task = ensureOwned(userId, confirmation);
+        AudioProcessingConfirmation confirmation = loadOwnedForUpdate(
+                userId, confirmationId);
+        AudioAnalysisTask task = taskMapper.selectById(
+                confirmation.getTaskId());
         ensureDraft(confirmation);
         AudioProcessingPlan plan = requireCurrentPlan(confirmation, task);
 
@@ -208,9 +209,10 @@ public class AudioProcessingConfirmationServiceImpl
     public ProcessingConfirmationVO confirm(Long userId,
                                              Long confirmationId) {
         requirePositive(confirmationId, "confirmationId");
-        AudioProcessingConfirmation confirmation = loadForUpdate(
-                confirmationId);
-        AudioAnalysisTask task = ensureOwned(userId, confirmation);
+        AudioProcessingConfirmation confirmation = loadOwnedForUpdate(
+                userId, confirmationId);
+        AudioAnalysisTask task = taskMapper.selectById(
+                confirmation.getTaskId());
         ensureDraft(confirmation);
         requireSuccessfulTask(task);
         AudioProcessingPlan plan = requireCurrentPlan(confirmation, task);
@@ -251,9 +253,10 @@ public class AudioProcessingConfirmationServiceImpl
     public ProcessingConfirmationVO cancel(Long userId,
                                             Long confirmationId) {
         requirePositive(confirmationId, "confirmationId");
-        AudioProcessingConfirmation confirmation = loadForUpdate(
-                confirmationId);
-        AudioAnalysisTask task = ensureOwned(userId, confirmation);
+        AudioProcessingConfirmation confirmation = loadOwnedForUpdate(
+                userId, confirmationId);
+        AudioAnalysisTask task = taskMapper.selectById(
+                confirmation.getTaskId());
         ensureDraft(confirmation);
         AudioProcessingPlan plan = requireCurrentPlan(confirmation, task);
         LocalDateTime now = LocalDateTime.now();
@@ -438,24 +441,30 @@ public class AudioProcessingConfirmationServiceImpl
         return confirmation;
     }
 
-    private AudioProcessingConfirmation loadForUpdate(Long id) {
+    private AudioProcessingConfirmation loadOwnedForUpdate(Long userId,
+                                                            Long id) {
         AudioProcessingConfirmation confirmation = confirmationMapper
                 .selectByIdForUpdate(id);
         if (confirmation == null) {
-            throw new BusinessException(
-                    ErrorCode.PROCESSING_CONFIRMATION_NOT_FOUND);
+            throw confirmationNotFound();
+        }
+        AudioAnalysisTask task;
+        try {
+            task = loadOwnedTask(userId,
+                confirmation.getTaskId());
+        } catch (BusinessException ignored) {
+            throw confirmationNotFound();
+        }
+        if (!task.getAudioFileId().equals(confirmation.getAudioFileId())) {
+            throw confirmationNotFound();
         }
         return confirmation;
     }
 
-    private AudioAnalysisTask ensureOwned(
-            Long userId, AudioProcessingConfirmation confirmation) {
-        AudioAnalysisTask task = loadOwnedTask(userId,
-                confirmation.getTaskId());
-        if (!task.getAudioFileId().equals(confirmation.getAudioFileId())) {
-            throw new BusinessException(ErrorCode.AUDIO_FILE_ACCESS_DENIED);
-        }
-        return task;
+    private BusinessException confirmationNotFound() {
+        return new BusinessException(
+                ErrorCode.PROCESSING_CONFIRMATION_NOT_FOUND,
+                "资源不存在或不可访问");
     }
 
     private AudioAnalysisTask loadOwnedTask(Long userId, Long taskId) {
@@ -463,11 +472,13 @@ public class AudioProcessingConfirmationServiceImpl
         requirePositive(taskId, "taskId");
         AudioAnalysisTask task = taskMapper.selectById(taskId);
         if (task == null) {
-            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND);
+            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
         AudioFile file = audioFileMapper.selectById(task.getAudioFileId());
         if (file == null || !userId.equals(file.getUserId())) {
-            throw new BusinessException(ErrorCode.AUDIO_FILE_ACCESS_DENIED);
+            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
         return task;
     }

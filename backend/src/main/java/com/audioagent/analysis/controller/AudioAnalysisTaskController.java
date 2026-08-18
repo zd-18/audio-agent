@@ -1,7 +1,6 @@
 package com.audioagent.analysis.controller;
 
 import com.audioagent.auth.context.CurrentUserProvider;
-import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.analysis.dto.CreateTaskRequest;
 import com.audioagent.analysis.dto.UpdateProcessingStepConfirmationRequest;
 import com.audioagent.analysis.service.AudioAnalysisTaskService;
@@ -35,7 +34,6 @@ public class AudioAnalysisTaskController {
     private final AudioProcessingConfirmationService
             audioProcessingConfirmationService;
     private final CurrentUserProvider currentUserProvider;
-    private final AudioResourceOwnershipService ownershipService;
     private final AudioVersionService audioVersionService;
 
     @GetMapping("/tasks")
@@ -58,8 +56,7 @@ public class AudioAnalysisTaskController {
             @Valid @RequestBody CreateTaskRequest request
     ) {
         Long userId = currentUserProvider.requireUserId();
-        ownershipService.requireFileOwned(userId, request.getAudioFileId());
-        TaskVO result = audioAnalysisTaskService.createTask(request);
+        TaskVO result = audioAnalysisTaskService.createTask(userId, request);
         return ApiResponse.success(result);
     }
 
@@ -68,8 +65,7 @@ public class AudioAnalysisTaskController {
             @PathVariable("taskId") Long taskId
     ) {
         Long userId = currentUserProvider.requireUserId();
-        ownershipService.requireTaskOwned(userId, taskId);
-        TaskVO result = audioAnalysisTaskService.getTaskDetail(taskId);
+        TaskVO result = audioAnalysisTaskService.getTaskDetail(userId, taskId);
         return ApiResponse.success(result);
     }
 
@@ -87,8 +83,7 @@ public class AudioAnalysisTaskController {
             @PathVariable("taskId") Long taskId
     ) {
         Long userId = currentUserProvider.requireUserId();
-        ownershipService.requireTaskOwned(userId, taskId);
-        TaskVO result = audioAnalysisTaskService.retryTask(taskId);
+        TaskVO result = audioAnalysisTaskService.retryTask(userId, taskId);
         return ApiResponse.success(result);
     }
 
@@ -98,9 +93,8 @@ public class AudioAnalysisTaskController {
             @RequestParam(required = false) String issueType
     ) {
         Long userId = currentUserProvider.requireUserId();
-        ownershipService.requireTaskOwned(userId, taskId);
         return ApiResponse.success(
-                audioIssueSegmentService.getIssues(taskId, issueType));
+                audioIssueSegmentService.getIssues(userId, taskId, issueType));
     }
 
     @GetMapping("/tasks/{taskId}/report")
@@ -108,9 +102,8 @@ public class AudioAnalysisTaskController {
             @PathVariable("taskId") Long taskId
     ) {
         Long userId = currentUserProvider.requireUserId();
-        ownershipService.requireTaskOwned(userId, taskId);
         return ApiResponse.success(audioAnalysisReportService
-                .getReport(taskId));
+                .getReport(userId, taskId));
     }
 
     @PostMapping("/tasks/{taskId}/processing-plan")
@@ -118,7 +111,6 @@ public class AudioAnalysisTaskController {
             @PathVariable("taskId") Long taskId
     ) {
         Long userId = currentUserProvider.requireUserId();
-        ownershipService.requireTaskOwned(userId, taskId);
         return ApiResponse.success(audioProcessingPlanService
                 .generateForOwner(userId, taskId));
     }
@@ -128,8 +120,8 @@ public class AudioAnalysisTaskController {
             @PathVariable("taskId") Long taskId
     ) {
         Long userId = currentUserProvider.requireUserId();
-        ownershipService.requireTaskOwned(userId, taskId);
-        return ApiResponse.success(audioProcessingPlanService.get(taskId));
+        return ApiResponse.success(audioProcessingPlanService.get(userId,
+                taskId));
     }
 
     @PostMapping("/tasks/{taskId}/processing-confirmation")

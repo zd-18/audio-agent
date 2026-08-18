@@ -13,6 +13,7 @@ import com.audioagent.analysis.report.QualityGrade;
 import com.audioagent.analysis.vo.AudioAnalysisReportVO;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -43,6 +45,7 @@ class AudioAnalysisReportServiceImplTest {
     private AnalysisProperties properties;
     private ObjectMapper objectMapper;
     private AudioAnalysisReportServiceImpl service;
+    private AudioResourceOwnershipService ownershipService;
 
     @BeforeEach
     void setUp() {
@@ -54,9 +57,10 @@ class AudioAnalysisReportServiceImplTest {
         generator = mock(AudioAnalysisReportGenerator.class);
         properties = new AnalysisProperties();
         objectMapper = new ObjectMapper().findAndRegisterModules();
+        ownershipService = mock(AudioResourceOwnershipService.class);
         service = new AudioAnalysisReportServiceImpl(taskMapper,
                 resultMapper, issueMapper, reportMapper, fileMapper,
-                generator, properties, objectMapper);
+                generator, properties, objectMapper, ownershipService);
     }
 
     @Test
@@ -65,7 +69,7 @@ class AudioAnalysisReportServiceImplTest {
                 AnalysisTaskStatus.PROCESSING, AnalysisTaskStatus.FAILED)) {
             when(taskMapper.selectById(10L)).thenReturn(task(status));
             BusinessException exception = assertThrows(
-                    BusinessException.class, () -> service.getReport(10L));
+                    BusinessException.class, () -> service.getReport(7L, 10L));
             assertEquals(ErrorCode.REPORT_NOT_READY.getCode(),
                     exception.getCode());
         }
@@ -90,7 +94,7 @@ class AudioAnalysisReportServiceImplTest {
         when(generator.generate(any(), any(), any())).thenReturn(generated);
         when(reportMapper.upsert(any())).thenReturn(1);
 
-        AudioAnalysisReportVO report = service.getReport(10L);
+        AudioAnalysisReportVO report = service.getReport(7L, 10L);
 
         assertEquals(100, report.getQualityScore());
         assertEquals("10", String.valueOf(report.getTaskId()));
@@ -127,7 +131,7 @@ class AudioAnalysisReportServiceImplTest {
     void unknownTaskReturnsExplicitTaskError() {
         when(taskMapper.selectById(999L)).thenReturn(null);
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.getReport(999L));
+                () -> service.getReport(7L, 999L));
         assertEquals(ErrorCode.AUDIO_TASK_NOT_FOUND.getCode(),
                 exception.getCode());
     }
@@ -141,7 +145,7 @@ class AudioAnalysisReportServiceImplTest {
         when(reportMapper.selectByTaskId(10L)).thenReturn(report);
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.getReport(10L));
+                () -> service.getReport(7L, 10L));
         assertEquals(ErrorCode.REPORT_PARSE_FAILED.getCode(),
                 exception.getCode());
     }
@@ -161,9 +165,23 @@ class AudioAnalysisReportServiceImplTest {
         when(reportMapper.selectByTaskId(10L)).thenReturn(null);
         when(resultMapper.selectOne(any())).thenReturn(null);
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.getReport(10L));
+                () -> service.getReport(7L, 10L));
         assertEquals(ErrorCode.REPORT_DATA_INCOMPLETE.getCode(),
                 exception.getCode());
+    }
+
+    @Test
+    void foreignTaskCannotReadReportInsideServiceBoundary() {
+        doThrow(new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                "资源不存在或不可访问"))
+                .when(ownershipService).requireTaskOwned(7L, 10L);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.getReport(7L, 10L));
+
+        assertEquals(ErrorCode.AUDIO_TASK_NOT_FOUND.getCode(),
+                error.getCode());
+        verify(reportMapper, never()).selectByTaskId(any());
     }
 
     private AudioAnalysisTask task(AnalysisTaskStatus status) {

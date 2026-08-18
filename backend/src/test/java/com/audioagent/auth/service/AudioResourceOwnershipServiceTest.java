@@ -40,7 +40,7 @@ class AudioResourceOwnershipServiceTest {
         BusinessException error = assertThrows(BusinessException.class,
                 () -> service.requireFileOwned(1L, 20L));
 
-        assertEquals(ErrorCode.AUDIO_FILE_ACCESS_DENIED.getCode(),
+        assertEquals(ErrorCode.AUDIO_FILE_NOT_FOUND.getCode(),
                 error.getCode());
     }
 

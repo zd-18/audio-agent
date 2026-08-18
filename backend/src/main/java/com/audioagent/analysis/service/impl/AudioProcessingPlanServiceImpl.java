@@ -24,6 +24,7 @@ import com.audioagent.analysis.vo.AudioAnalysisReportVO;
 import com.audioagent.analysis.vo.ProcessingPlanVO;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
@@ -64,6 +65,7 @@ public class AudioProcessingPlanServiceImpl
     private final UserSettingService userSettingService;
     private final AnalysisProperties properties;
     private final ObjectMapper objectMapper;
+    private final AudioResourceOwnershipService ownershipService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -95,22 +97,16 @@ public class AudioProcessingPlanServiceImpl
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public ProcessingPlanVO generate(Long taskId) {
-        UserProcessingPreferences preferences = userSettingService
-                .getCurrentProcessingPreferences();
-        return generate(taskId, preferences);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
     public ProcessingPlanVO generateForOwner(Long userId, Long taskId) {
+        ownershipService.requireTaskOwned(userId, taskId);
         UserProcessingPreferences preferences = userSettingService
                 .getProcessingPreferencesForOwner(userId);
-        return generate(taskId, preferences);
+        return generate(userId, taskId, preferences);
     }
 
     private ProcessingPlanVO generate(
-            Long taskId, UserProcessingPreferences preferences) {
+            Long userId, Long taskId,
+            UserProcessingPreferences preferences) {
         validateTaskId(taskId);
         if (!properties.getProcessingPlan().isEnabled()) {
             throw new BusinessException(ErrorCode.PROCESSING_PLAN_NOT_READY,
@@ -128,7 +124,7 @@ public class AudioProcessingPlanServiceImpl
 
         long startedAt = System.currentTimeMillis();
         try {
-            AudioAnalysisReportVO report = loadReport(taskId);
+            AudioAnalysisReportVO report = loadReport(userId, taskId);
             AudioAnalysisResult result = resultMapper.selectOne(
                     new LambdaQueryWrapper<AudioAnalysisResult>()
                             .eq(AudioAnalysisResult::getTaskId, taskId));
@@ -177,8 +173,9 @@ public class AudioProcessingPlanServiceImpl
 
     @Override
     @Transactional(readOnly = true)
-    public ProcessingPlanVO get(Long taskId) {
+    public ProcessingPlanVO get(Long userId, Long taskId) {
         validateTaskId(taskId);
+        ownershipService.requireTaskOwned(userId, taskId);
         if (taskMapper.selectById(taskId) == null) {
             throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
                     "分析任务不存在");
@@ -194,9 +191,9 @@ public class AudioProcessingPlanServiceImpl
         return toVO(plan, steps == null ? List.of() : steps);
     }
 
-    private AudioAnalysisReportVO loadReport(Long taskId) {
+    private AudioAnalysisReportVO loadReport(Long userId, Long taskId) {
         try {
-            return reportService.getReport(taskId);
+            return reportService.getReport(userId, taskId);
         } catch (BusinessException e) {
             log.warn("Required report is unavailable for processing plan, "
                     + "taskId={}, reportErrorCode={}", taskId, e.getCode());

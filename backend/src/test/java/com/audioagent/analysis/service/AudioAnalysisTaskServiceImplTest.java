@@ -13,8 +13,11 @@ import com.audioagent.analysis.service.impl.AudioAnalysisTaskServiceImpl;
 import com.audioagent.analysis.vo.TaskListVO;
 import com.audioagent.analysis.vo.TaskVO;
 import com.audioagent.common.api.PageResult;
+import com.audioagent.common.enums.ErrorCode;
+import com.audioagent.common.exception.BusinessException;
 import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.file.entity.AudioFile;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +48,8 @@ class AudioAnalysisTaskServiceImplTest {
     private ApplicationEventPublisher eventPublisher;
     @Mock
     private LoudnessEvaluator loudnessEvaluator;
+    @Mock
+    private AudioResourceOwnershipService ownershipService;
     @InjectMocks
     private AudioAnalysisTaskServiceImpl service;
 
@@ -148,7 +153,7 @@ class AudioAnalysisTaskServiceImplTest {
         when(taskMapper.selectById(31L)).thenReturn(task);
         when(resultMapper.selectOne(any())).thenReturn(storedResult);
 
-        TaskVO detail = service.getTaskDetail(31L);
+        TaskVO detail = service.getTaskDetail(USER_ID, 31L);
 
         assertNotNull(detail.getResult());
         assertEquals("wav", detail.getResult().getFormatName());
@@ -210,7 +215,7 @@ class AudioAnalysisTaskServiceImplTest {
         request.setAudioFileId(selectedVersionId);
         request.setAnalysisType(AnalysisType.FULL.name());
 
-        TaskVO created = service.createTask(request);
+        TaskVO created = service.createTask(USER_ID, request);
 
         assertEquals(selectedVersionId, created.getAudioFileId());
         ArgumentCaptor<AudioAnalysisTask> taskCaptor =
@@ -223,6 +228,41 @@ class AudioAnalysisTaskServiceImplTest {
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertEquals(selectedVersionId,
                 eventCaptor.getValue().getAudioFileId());
+    }
+
+    @Test
+    void foreignAudioCannotCreateTaskInsideServiceBoundary() {
+        CreateTaskRequest request = new CreateTaskRequest();
+        request.setAudioFileId(20L);
+        doThrow(new BusinessException(ErrorCode.AUDIO_FILE_NOT_FOUND,
+                "资源不存在或不可访问"))
+                .when(ownershipService).requireFileOwned(USER_ID, 20L);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.createTask(USER_ID, request));
+
+        assertEquals(ErrorCode.AUDIO_FILE_NOT_FOUND.getCode(),
+                error.getCode());
+        verify(taskMapper, never()).insert(any(AudioAnalysisTask.class));
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void foreignTaskCannotReadDetailOrRetryInsideServiceBoundary() {
+        doThrow(new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                "资源不存在或不可访问"))
+                .when(ownershipService).requireTaskOwned(USER_ID, 31L);
+
+        BusinessException detail = assertThrows(BusinessException.class,
+                () -> service.getTaskDetail(USER_ID, 31L));
+        BusinessException retry = assertThrows(BusinessException.class,
+                () -> service.retryTask(USER_ID, 31L));
+
+        assertEquals(ErrorCode.AUDIO_TASK_NOT_FOUND.getCode(),
+                detail.getCode());
+        assertEquals(detail.getMessage(), retry.getMessage());
+        verify(taskMapper, never()).update(any(), any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

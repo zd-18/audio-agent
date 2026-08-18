@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AudioProcessingExecutionServiceImplTest {
@@ -114,6 +115,7 @@ class AudioProcessingExecutionServiceImplTest {
 
     @Test
     void duplicateCreateReturnsExistingWithoutDispatch() {
+        stubConfirmationStatus("CONFIRMED", 1);
         AudioProcessingExecution existing = execution("QUEUED", 7L);
         when(executionMapper.selectByConfirmationId(60L))
                 .thenReturn(existing);
@@ -171,8 +173,38 @@ class AudioProcessingExecutionServiceImplTest {
         AudioFile source = fileMapper.selectById(20L);
         source.setUserId(8L);
 
-        assertCode(ErrorCode.AUDIO_FILE_ACCESS_DENIED,
+        assertCode(ErrorCode.PROCESSING_EXECUTION_CONFIRMATION_NOT_READY,
                 () -> service.create(7L, 60L));
+    }
+
+    @Test
+    void foreignConfirmationNeverLeaksStatusOrAcceptedCount() {
+        stubConfirmationStatus("DRAFT", 0);
+        AudioProcessingConfirmation confirmation = confirmationMapper
+                .selectById(60L);
+        fileMapper.selectById(20L).setUserId(8L);
+
+        String expectedMessage = null;
+        for (String status : List.of("DRAFT", "STALE", "CANCELLED",
+                "CONFIRMED")) {
+            confirmation.setConfirmationStatus(status);
+            confirmation.setAcceptedStepCount(
+                    "CONFIRMED".equals(status) ? 1 : 0);
+            BusinessException error = assertThrows(BusinessException.class,
+                    () -> service.create(7L, 60L));
+            assertEquals(ErrorCode
+                    .PROCESSING_EXECUTION_CONFIRMATION_NOT_READY.getCode(),
+                    error.getCode());
+            if (expectedMessage == null) {
+                expectedMessage = error.getMessage();
+            } else {
+                assertEquals(expectedMessage, error.getMessage());
+            }
+        }
+
+        verify(executionMapper, never()).selectByConfirmationId(any());
+        verify(executionMapper, never()).insertIgnore(any());
+        verifyNoInteractions(dispatcher);
     }
 
     @Test
@@ -220,8 +252,45 @@ class AudioProcessingExecutionServiceImplTest {
         AudioProcessingExecution execution = execution("SUCCESS", 8L);
         when(executionMapper.selectExecutionById(execution.getId()))
                 .thenReturn(execution);
-        assertCode(ErrorCode.AUDIO_FILE_ACCESS_DENIED,
+        assertCode(ErrorCode.PROCESSING_EXECUTION_NOT_FOUND,
                 () -> service.get(7L, execution.getId()));
+    }
+
+    @Test
+    void foreignExecutionCannotBeRetried() {
+        AudioProcessingExecution execution = execution("FAILED", 8L);
+        when(executionMapper.selectExecutionById(execution.getId()))
+                .thenReturn(execution);
+
+        assertCode(ErrorCode.PROCESSING_EXECUTION_NOT_FOUND,
+                () -> service.retry(7L, execution.getId()));
+
+        verify(executionMapper, never()).resetForManualRetry(any(), any());
+        verifyNoInteractions(dispatcher, workDirectories);
+    }
+
+    @Test
+    void foreignAndMissingTasksUseSameExecutionLookupSemantics() {
+        AudioAnalysisTask foreignTask = new AudioAnalysisTask();
+        foreignTask.setId(10L);
+        foreignTask.setAudioFileId(20L);
+        AudioFile foreignFile = new AudioFile();
+        foreignFile.setId(20L);
+        foreignFile.setUserId(8L);
+        when(taskMapper.selectById(10L)).thenReturn(foreignTask);
+        when(fileMapper.selectById(20L)).thenReturn(foreignFile);
+
+        BusinessException foreign = assertThrows(BusinessException.class,
+                () -> service.getByTask(7L, 10L));
+        BusinessException missing = assertThrows(BusinessException.class,
+                () -> service.getByTask(7L, 11L));
+
+        assertEquals(ErrorCode.AUDIO_TASK_NOT_FOUND.getCode(),
+                foreign.getCode());
+        assertEquals(foreign.getCode(), missing.getCode());
+        assertEquals(foreign.getMessage(), missing.getMessage());
+        verify(confirmationMapper, never())
+                .selectLatestConfirmedByTaskId(any());
     }
 
     @Test
@@ -310,6 +379,15 @@ class AudioProcessingExecutionServiceImplTest {
         confirmation.setConfirmationStatus(status);
         confirmation.setAcceptedStepCount(accepted);
         when(confirmationMapper.selectById(60L)).thenReturn(confirmation);
+        AudioAnalysisTask task = new AudioAnalysisTask();
+        task.setId(10L);
+        task.setAudioFileId(20L);
+        task.setStatus(AnalysisTaskStatus.SUCCESS);
+        when(taskMapper.selectById(10L)).thenReturn(task);
+        AudioFile file = new AudioFile();
+        file.setId(20L);
+        file.setUserId(7L);
+        when(fileMapper.selectById(20L)).thenReturn(file);
     }
 
     private ProcessingConfirmationVO.Step step(

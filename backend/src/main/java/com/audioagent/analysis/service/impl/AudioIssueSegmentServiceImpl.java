@@ -17,6 +17,7 @@ import com.audioagent.analysis.vo.IssueSegmentVO;
 import com.audioagent.analysis.vo.IssueSummaryVO;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -54,6 +55,7 @@ public class AudioIssueSegmentServiceImpl
     private final VolumeIssueSilenceFilter volumeIssueSilenceFilter;
     private final VolumeIssueSeverityEvaluator volumeSeverityEvaluator;
     private final NoiseRiskOverlapFilter noiseRiskOverlapFilter;
+    private final AudioResourceOwnershipService ownershipService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -88,11 +90,13 @@ public class AudioIssueSegmentServiceImpl
 
     @Override
     @Transactional(readOnly = true)
-    public IssueSummaryVO getIssues(Long taskId, String issueType) {
+    public IssueSummaryVO getIssues(Long userId, Long taskId,
+                                    String issueType) {
         if (taskId == null || taskId <= 0) {
             throw new BusinessException(ErrorCode.PARAM_INVALID,
                     "taskId must be greater than 0");
         }
+        ownershipService.requireTaskOwned(userId, taskId);
         AudioAnalysisTask task = taskMapper.selectById(taskId);
         if (task == null) {
             throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,

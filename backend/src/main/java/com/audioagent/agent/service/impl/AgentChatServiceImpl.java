@@ -152,11 +152,13 @@ public class AgentChatServiceImpl implements AgentChatService {
                 conversationId);
         if (conversation == null) {
             throw new BusinessException(
-                    ErrorCode.AGENT_CONVERSATION_NOT_FOUND);
+                    ErrorCode.AGENT_CONVERSATION_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
         if (!userId.equals(conversation.getUserId())) {
             throw new BusinessException(
-                    ErrorCode.AGENT_CONVERSATION_ACCESS_DENIED);
+                    ErrorCode.AGENT_CONVERSATION_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
 
         AgentMessage existing = messageMapper
@@ -448,14 +450,12 @@ public class AgentChatServiceImpl implements AgentChatService {
 
     private AgentConversation requireOwnedConversation(
             Long userId, Long conversationId) {
-        AgentConversation any = conversationMapper.selectById(conversationId);
+        AgentConversation any = conversationMapper.selectOwnedById(
+                userId, conversationId);
         if (any == null) {
             throw new BusinessException(
-                    ErrorCode.AGENT_CONVERSATION_NOT_FOUND);
-        }
-        if (!userId.equals(any.getUserId())) {
-            throw new BusinessException(
-                    ErrorCode.AGENT_CONVERSATION_ACCESS_DENIED);
+                    ErrorCode.AGENT_CONVERSATION_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
         return any;
     }

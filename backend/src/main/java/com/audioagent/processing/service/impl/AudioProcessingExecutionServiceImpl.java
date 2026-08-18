@@ -88,17 +88,11 @@ public class AudioProcessingExecutionServiceImpl
         requirePositive(userId, "userId");
         requirePositive(confirmationId, "confirmationId");
 
-        AudioProcessingExecution existing = executionMapper
-                .selectByConfirmationId(confirmationId);
-        if (existing != null) {
-            ensureOwned(userId, existing);
-            return toVO(existing);
-        }
-
         AudioProcessingConfirmation confirmation = confirmationMapper
                 .selectById(confirmationId);
-        if (confirmation == null
-                || !ProcessingConfirmationStatus.CONFIRMED.name().equals(
+        AudioAnalysisTask task = requireOwnedConfirmation(userId,
+                confirmation);
+        if (!ProcessingConfirmationStatus.CONFIRMED.name().equals(
                 confirmation.getConfirmationStatus())) {
             throw new BusinessException(
                     ErrorCode.PROCESSING_EXECUTION_CONFIRMATION_NOT_READY);
@@ -109,26 +103,22 @@ public class AudioProcessingExecutionServiceImpl
                     ErrorCode.PROCESSING_EXECUTION_NO_ACCEPTED_STEPS);
         }
 
-        AudioAnalysisTask task = taskMapper.selectById(
-                confirmation.getTaskId());
-        if (task == null || task.getStatus() != AnalysisTaskStatus.SUCCESS
+        AudioProcessingExecution existing = executionMapper
+                .selectByConfirmationId(confirmationId);
+        if (existing != null) {
+            if (!userId.equals(existing.getUserId())) {
+                throw inaccessibleConfirmation();
+            }
+            return toVO(existing);
+        }
+
+        if (task.getStatus() != AnalysisTaskStatus.SUCCESS
                 || !confirmation.getAudioFileId().equals(
                 task.getAudioFileId())) {
             throw new BusinessException(
                     ErrorCode.PROCESSING_EXECUTION_CONFIRMATION_NOT_READY,
                     "Confirmation no longer belongs to a valid analysis task");
         }
-        AudioFile sourceFile = audioFileMapper.selectById(
-                confirmation.getAudioFileId());
-        if (sourceFile == null
-                || Integer.valueOf(1).equals(sourceFile.getDeleted())) {
-            throw new BusinessException(
-                    ErrorCode.PROCESSING_EXECUTION_SOURCE_FILE_NOT_FOUND);
-        }
-        if (!userId.equals(sourceFile.getUserId())) {
-            throw new BusinessException(ErrorCode.AUDIO_FILE_ACCESS_DENIED);
-        }
-
         ProcessingExecutionSnapshot snapshot;
         try {
             snapshot = snapshotParser.parse(confirmation.getConfirmationJson());
@@ -182,8 +172,7 @@ public class AudioProcessingExecutionServiceImpl
     public ProcessingExecutionVO get(Long userId, Long executionId) {
         requirePositive(userId, "userId");
         requirePositive(executionId, "executionId");
-        AudioProcessingExecution execution = load(executionId);
-        ensureOwned(userId, execution);
+        AudioProcessingExecution execution = loadOwned(userId, executionId);
         return toVO(execution);
     }
 
@@ -192,14 +181,7 @@ public class AudioProcessingExecutionServiceImpl
     public ProcessingExecutionVO getByTask(Long userId, Long taskId) {
         requirePositive(userId, "userId");
         requirePositive(taskId, "taskId");
-        AudioAnalysisTask task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND);
-        }
-        AudioFile file = audioFileMapper.selectById(task.getAudioFileId());
-        if (file == null || !userId.equals(file.getUserId())) {
-            throw new BusinessException(ErrorCode.AUDIO_FILE_ACCESS_DENIED);
-        }
+        AudioAnalysisTask task = loadOwnedTask(userId, taskId);
         AudioProcessingConfirmation confirmation = confirmationMapper
                 .selectLatestConfirmedByTaskId(taskId);
         if (confirmation == null) {
@@ -213,6 +195,10 @@ public class AudioProcessingExecutionServiceImpl
             throw new BusinessException(
                     ErrorCode.PROCESSING_EXECUTION_NOT_FOUND);
         }
+        if (!userId.equals(execution.getUserId())) {
+            throw new BusinessException(ErrorCode.PROCESSING_EXECUTION_NOT_FOUND,
+                    "资源不存在或不可访问");
+        }
         return toVO(execution);
     }
 
@@ -222,8 +208,7 @@ public class AudioProcessingExecutionServiceImpl
         requireEnabled();
         requirePositive(userId, "userId");
         requirePositive(executionId, "executionId");
-        AudioProcessingExecution execution = load(executionId);
-        ensureOwned(userId, execution);
+        AudioProcessingExecution execution = loadOwned(userId, executionId);
         if (!(ProcessingExecutionStatus.FAILED.name().equals(
                 execution.getExecutionStatus())
                 || ProcessingExecutionStatus.DEAD_LETTER.name().equals(
@@ -342,6 +327,54 @@ public class AudioProcessingExecutionServiceImpl
                     ErrorCode.PROCESSING_EXECUTION_NOT_FOUND);
         }
         return execution;
+    }
+
+    private AudioProcessingExecution loadOwned(Long userId,
+                                                Long executionId) {
+        AudioProcessingExecution execution = executionMapper
+                .selectExecutionById(executionId);
+        if (execution == null || !userId.equals(execution.getUserId())) {
+            throw new BusinessException(ErrorCode.PROCESSING_EXECUTION_NOT_FOUND,
+                    "资源不存在或不可访问");
+        }
+        return execution;
+    }
+
+    private AudioAnalysisTask requireOwnedConfirmation(
+            Long userId, AudioProcessingConfirmation confirmation) {
+        if (confirmation == null) {
+            throw inaccessibleConfirmation();
+        }
+        AudioAnalysisTask task = taskMapper.selectById(
+                confirmation.getTaskId());
+        AudioFile sourceFile = audioFileMapper.selectById(
+                confirmation.getAudioFileId());
+        if (task == null || sourceFile == null
+                || !userId.equals(sourceFile.getUserId())
+                || Integer.valueOf(1).equals(sourceFile.getDeleted())
+                || !confirmation.getAudioFileId().equals(
+                task.getAudioFileId())) {
+            throw inaccessibleConfirmation();
+        }
+        return task;
+    }
+
+    private BusinessException inaccessibleConfirmation() {
+        return new BusinessException(
+                ErrorCode.PROCESSING_EXECUTION_CONFIRMATION_NOT_READY,
+                "资源不存在或不可访问");
+    }
+
+    private AudioAnalysisTask loadOwnedTask(Long userId, Long taskId) {
+        AudioAnalysisTask task = taskMapper.selectById(taskId);
+        AudioFile file = task == null ? null
+                : audioFileMapper.selectById(task.getAudioFileId());
+        if (task == null || file == null
+                || !userId.equals(file.getUserId())) {
+            throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                    "资源不存在或不可访问");
+        }
+        return task;
     }
 
     private void ensureOwned(Long userId,

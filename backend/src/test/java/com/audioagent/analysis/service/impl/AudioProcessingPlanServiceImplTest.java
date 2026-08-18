@@ -24,6 +24,7 @@ import com.audioagent.analysis.vo.AudioAnalysisReportVO;
 import com.audioagent.analysis.vo.ProcessingPlanVO;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.setting.service.UserSettingService;
@@ -42,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -61,6 +63,7 @@ class AudioProcessingPlanServiceImplTest {
     private AnalysisProperties properties;
     private ObjectMapper objectMapper;
     private AudioProcessingPlanServiceImpl service;
+    private AudioResourceOwnershipService ownershipService;
 
     @BeforeEach
     void setUp() {
@@ -75,12 +78,14 @@ class AudioProcessingPlanServiceImplTest {
         userSettingService = mock(UserSettingService.class);
         properties = new AnalysisProperties();
         objectMapper = new ObjectMapper().findAndRegisterModules();
+        ownershipService = mock(AudioResourceOwnershipService.class);
         service = new AudioProcessingPlanServiceImpl(taskMapper,
                 resultMapper, issueMapper, planMapper, stepMapper,
                 confirmationMapper, mock(AudioFileMapper.class),
                 reportService, generator,
                 mock(ProcessingParameterValidator.class),
-                userSettingService, properties, objectMapper);
+                userSettingService, properties, objectMapper,
+                ownershipService);
     }
 
     @Test
@@ -89,7 +94,8 @@ class AudioProcessingPlanServiceImplTest {
                 AnalysisTaskStatus.PROCESSING, AnalysisTaskStatus.FAILED)) {
             when(taskMapper.selectById(10L)).thenReturn(task(status));
             BusinessException exception = assertThrows(
-                    BusinessException.class, () -> service.generate(10L));
+                    BusinessException.class,
+                    () -> service.generateForOwner(7L, 10L));
             assertEquals(ErrorCode.PROCESSING_PLAN_NOT_READY.getCode(),
                     exception.getCode());
         }
@@ -100,7 +106,8 @@ class AudioProcessingPlanServiceImplTest {
     void disabledPlanDoesNotReadOrWriteAnalysisData() {
         properties.getProcessingPlan().setEnabled(false);
         BusinessException exception = assertThrows(
-                BusinessException.class, () -> service.generate(10L));
+                BusinessException.class,
+                () -> service.generateForOwner(7L, 10L));
         assertEquals(ErrorCode.PROCESSING_PLAN_NOT_READY.getCode(),
                 exception.getCode());
         verify(taskMapper, never()).selectById(any());
@@ -112,7 +119,7 @@ class AudioProcessingPlanServiceImplTest {
         AudioProcessingPlan existing = existingPlan();
         when(taskMapper.selectById(10L)).thenReturn(
                 task(AnalysisTaskStatus.SUCCESS));
-        when(reportService.getReport(10L)).thenReturn(
+        when(reportService.getReport(7L, 10L)).thenReturn(
                 AudioAnalysisReportVO.builder().build());
         when(resultMapper.selectOne(any())).thenReturn(result());
         when(issueMapper.selectByTask(10L)).thenReturn(List.of());
@@ -123,8 +130,8 @@ class AudioProcessingPlanServiceImplTest {
         when(stepMapper.insertBatch(any())).thenAnswer(invocation ->
                 ((List<?>) invocation.getArgument(0)).size());
 
-        ProcessingPlanVO first = service.generate(10L);
-        ProcessingPlanVO second = service.generate(10L);
+        ProcessingPlanVO first = service.generateForOwner(7L, 10L);
+        ProcessingPlanVO second = service.generateForOwner(7L, 10L);
 
         assertEquals(30L, first.getPlanId());
         assertEquals(first.getPlanId(), second.getPlanId());
@@ -148,7 +155,7 @@ class AudioProcessingPlanServiceImplTest {
         existing.setId(9_223_372_036_854_775_806L);
         when(taskMapper.selectById(10L)).thenReturn(
                 task(AnalysisTaskStatus.SUCCESS));
-        when(reportService.getReport(10L)).thenReturn(
+        when(reportService.getReport(7L, 10L)).thenReturn(
                 AudioAnalysisReportVO.builder().build());
         when(resultMapper.selectOne(any())).thenReturn(result());
         when(issueMapper.selectByTask(10L)).thenReturn(List.of());
@@ -158,7 +165,7 @@ class AudioProcessingPlanServiceImplTest {
         when(planMapper.upsert(any())).thenReturn(1);
         when(stepMapper.insertBatch(any())).thenReturn(1);
 
-        ProcessingPlanVO vo = service.generate(10L);
+        ProcessingPlanVO vo = service.generateForOwner(7L, 10L);
         String json = objectMapper.writeValueAsString(vo);
 
         assertTrue(json.contains("\"9223372036854775806\""));
@@ -181,7 +188,7 @@ class AudioProcessingPlanServiceImplTest {
         when(planMapper.selectByTaskId(10L)).thenReturn(null);
 
         BusinessException exception = assertThrows(
-                BusinessException.class, () -> service.get(10L));
+                BusinessException.class, () -> service.get(7L, 10L));
 
         assertEquals(ErrorCode.PROCESSING_PLAN_NOT_FOUND.getCode(),
                 exception.getCode());
@@ -203,7 +210,7 @@ class AudioProcessingPlanServiceImplTest {
         when(planMapper.selectByTaskId(10L)).thenReturn(plan);
         when(stepMapper.selectByPlanId(30L)).thenReturn(List.of(step));
 
-        ProcessingPlanVO vo = service.get(10L);
+        ProcessingPlanVO vo = service.get(7L, 10L);
 
         assertEquals(Map.of(), vo.getSteps().getFirst().getParameters());
     }
@@ -212,7 +219,7 @@ class AudioProcessingPlanServiceImplTest {
     void generatorFailureDoesNotReplaceExistingPlanSteps() {
         when(taskMapper.selectById(10L)).thenReturn(
                 task(AnalysisTaskStatus.SUCCESS));
-        when(reportService.getReport(10L)).thenReturn(
+        when(reportService.getReport(7L, 10L)).thenReturn(
                 AudioAnalysisReportVO.builder().build());
         when(resultMapper.selectOne(any())).thenReturn(result());
         when(issueMapper.selectByTask(10L)).thenReturn(List.of());
@@ -220,7 +227,8 @@ class AudioProcessingPlanServiceImplTest {
                 new IllegalStateException("rule failure"));
 
         BusinessException exception = assertThrows(
-                BusinessException.class, () -> service.generate(10L));
+                BusinessException.class,
+                () -> service.generateForOwner(7L, 10L));
 
         assertEquals(ErrorCode.PROCESSING_PLAN_GENERATION_FAILED.getCode(),
                 exception.getCode());
@@ -232,7 +240,7 @@ class AudioProcessingPlanServiceImplTest {
     void unsupportedGeneratedOperationIsNotSaved() {
         when(taskMapper.selectById(10L)).thenReturn(
                 task(AnalysisTaskStatus.SUCCESS));
-        when(reportService.getReport(10L)).thenReturn(
+        when(reportService.getReport(7L, 10L)).thenReturn(
                 AudioAnalysisReportVO.builder().build());
         when(resultMapper.selectOne(any())).thenReturn(result());
         when(issueMapper.selectByTask(10L)).thenReturn(List.of());
@@ -246,7 +254,8 @@ class AudioProcessingPlanServiceImplTest {
                         "summary", 10_000L, List.of(unsupported), 0, 0));
 
         BusinessException exception = assertThrows(
-                BusinessException.class, () -> service.generate(10L));
+                BusinessException.class,
+                () -> service.generateForOwner(7L, 10L));
 
         assertEquals(ErrorCode.PROCESSING_PLAN_GENERATION_FAILED.getCode(),
                 exception.getCode());
@@ -258,7 +267,7 @@ class AudioProcessingPlanServiceImplTest {
     void savedStepOrderIsContinuous() {
         when(taskMapper.selectById(10L)).thenReturn(
                 task(AnalysisTaskStatus.SUCCESS));
-        when(reportService.getReport(10L)).thenReturn(
+        when(reportService.getReport(7L, 10L)).thenReturn(
                 AudioAnalysisReportVO.builder().build());
         when(resultMapper.selectOne(any())).thenReturn(result());
         when(issueMapper.selectByTask(10L)).thenReturn(List.of());
@@ -282,7 +291,7 @@ class AudioProcessingPlanServiceImplTest {
         when(planMapper.upsert(any())).thenReturn(1);
         when(stepMapper.insertBatch(any())).thenReturn(3);
 
-        service.generate(10L);
+        service.generateForOwner(7L, 10L);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<AudioProcessingStep>> captor =
@@ -290,6 +299,24 @@ class AudioProcessingPlanServiceImplTest {
         verify(stepMapper).insertBatch(captor.capture());
         assertEquals(List.of(1, 2, 3), captor.getValue().stream()
                 .map(AudioProcessingStep::getStepOrder).toList());
+    }
+
+    @Test
+    void foreignTaskCannotGenerateOrReadPlanInsideServiceBoundary() {
+        doThrow(new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                "资源不存在或不可访问"))
+                .when(ownershipService).requireTaskOwned(7L, 10L);
+
+        BusinessException generate = assertThrows(BusinessException.class,
+                () -> service.generateForOwner(7L, 10L));
+        BusinessException read = assertThrows(BusinessException.class,
+                () -> service.get(7L, 10L));
+
+        assertEquals(ErrorCode.AUDIO_TASK_NOT_FOUND.getCode(),
+                generate.getCode());
+        assertEquals(generate.getMessage(), read.getMessage());
+        verify(planMapper, never()).upsert(any());
+        verify(planMapper, never()).selectByTaskId(any());
     }
 
     private AudioAnalysisTask task(AnalysisTaskStatus status) {

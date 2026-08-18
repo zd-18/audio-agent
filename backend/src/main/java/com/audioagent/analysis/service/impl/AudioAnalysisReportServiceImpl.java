@@ -17,6 +17,7 @@ import com.audioagent.analysis.vo.AudioAnalysisReportVO;
 import com.audioagent.analysis.vo.AudioAnalysisReportVO.Payload;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
@@ -46,11 +47,13 @@ public class AudioAnalysisReportServiceImpl
     private final AudioAnalysisReportGenerator reportGenerator;
     private final AnalysisProperties properties;
     private final ObjectMapper objectMapper;
+    private final AudioResourceOwnershipService ownershipService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public AudioAnalysisReportVO getReport(Long taskId) {
+    public AudioAnalysisReportVO getReport(Long userId, Long taskId) {
         validateTaskId(taskId);
+        ownershipService.requireTaskOwned(userId, taskId);
         AudioAnalysisTask task = taskMapper.selectById(taskId);
         if (task == null) {
             throw new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,

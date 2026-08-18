@@ -153,7 +153,8 @@ public class AgentProcessingWorkflowServiceImpl
         workflow.setUpdatedAt(now);
         log.info("Agent processing execution started, workflowId={}, executionId={}",
                 workflowId, execution.getExecutionId());
-        return toVO(workflow, planService.get(workflow.getTaskId()), execution);
+        return toVO(workflow, planService.get(userId, workflow.getTaskId()),
+                execution);
     }
 
     @Override
@@ -178,7 +179,8 @@ public class AgentProcessingWorkflowServiceImpl
                 conversationId);
         if (conversation == null || !userId.equals(conversation.getUserId())) {
             throw new BusinessException(
-                    ErrorCode.AGENT_CONVERSATION_ACCESS_DENIED);
+                    ErrorCode.AGENT_CONVERSATION_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
         return workflowMapper.selectByConversation(userId, conversationId)
                 .stream().map(this::synchronize).map(this::toVO).toList();
@@ -236,7 +238,8 @@ public class AgentProcessingWorkflowServiceImpl
     private AgentProcessingWorkflowVO toVO(
             AgentProcessingWorkflow workflow) {
         ProcessingPlanVO plan = workflow.getPlanId() == null
-                ? null : planService.get(workflow.getTaskId());
+                ? null : planService.get(workflow.getUserId(),
+                workflow.getTaskId());
         ProcessingExecutionVO execution = workflow.getExecutionId() == null
                 ? null : executionService.get(workflow.getUserId(),
                 workflow.getExecutionId());
@@ -322,12 +325,9 @@ public class AgentProcessingWorkflowServiceImpl
 
     private void ensureOwned(Long userId,
                              AgentProcessingWorkflow workflow) {
-        if (workflow == null) {
-            throw new BusinessException(ErrorCode.AGENT_WORKFLOW_NOT_FOUND);
-        }
-        if (!userId.equals(workflow.getUserId())) {
-            throw new BusinessException(
-                    ErrorCode.AGENT_CONVERSATION_ACCESS_DENIED);
+        if (workflow == null || !userId.equals(workflow.getUserId())) {
+            throw new BusinessException(ErrorCode.AGENT_WORKFLOW_NOT_FOUND,
+                    "资源不存在或不可访问");
         }
     }
 

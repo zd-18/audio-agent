@@ -13,7 +13,7 @@ public interface AudioIssueSegmentService {
     IssueStatistics replaceSilenceSegments(Long taskId, Long audioFileId,
                                            List<SilenceSegment> segments);
 
-    IssueSummaryVO getIssues(Long taskId, String issueType);
+    IssueSummaryVO getIssues(Long userId, Long taskId, String issueType);
 
     VolumeIssueStatistics replaceVolumeSegments(
             Long taskId, Long audioFileId,

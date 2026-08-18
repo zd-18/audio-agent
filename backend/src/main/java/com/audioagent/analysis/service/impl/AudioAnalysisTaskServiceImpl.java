@@ -16,6 +16,7 @@ import com.audioagent.analysis.vo.TaskListVO;
 import com.audioagent.common.api.PageResult;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.file.mapper.AudioFileMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -44,6 +45,7 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
     private final AudioFileMapper audioFileMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final LoudnessEvaluator loudnessEvaluator;
+    private final AudioResourceOwnershipService ownershipService;
 
     @Override
     @Transactional(readOnly = true)
@@ -76,7 +78,13 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public TaskVO createTask(CreateTaskRequest request) {
+    public TaskVO createTask(Long userId, CreateTaskRequest request) {
+        requireUserId(userId);
+        if (request == null) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "请求内容不能为空");
+        }
+        ownershipService.requireFileOwned(userId, request.getAudioFileId());
         return createTaskInternal(request, null, null);
     }
 
@@ -162,12 +170,14 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
 
     @Override
     @Transactional(readOnly = true)
-    public TaskVO getTaskDetail(Long taskId) {
+    public TaskVO getTaskDetail(Long userId, Long taskId) {
+        requireUserId(userId);
         if (taskId == null || taskId <= 0) {
             throw new BusinessException(
                     ErrorCode.PARAM_INVALID, "任务ID不能为空");
         }
 
+        ownershipService.requireTaskOwned(userId, taskId);
         AudioAnalysisTask task =
                 audioAnalysisTaskMapper.selectById(taskId);
 
@@ -188,12 +198,14 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public TaskVO retryTask(Long taskId) {
+    public TaskVO retryTask(Long userId, Long taskId) {
+        requireUserId(userId);
         if (taskId == null || taskId <= 0) {
             throw new BusinessException(
                     ErrorCode.PARAM_INVALID, "任务ID不能为空");
         }
 
+        ownershipService.requireTaskOwned(userId, taskId);
         AudioAnalysisTask task =
                 audioAnalysisTaskMapper.selectById(taskId);
 

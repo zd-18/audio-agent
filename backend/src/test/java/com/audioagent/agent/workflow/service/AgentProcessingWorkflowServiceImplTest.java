@@ -23,6 +23,8 @@ import com.audioagent.analysis.vo.ProcessingConfirmationVO;
 import com.audioagent.analysis.vo.ProcessingPlanVO;
 import com.audioagent.processing.service.AudioProcessingExecutionService;
 import com.audioagent.processing.vo.ProcessingExecutionVO;
+import com.audioagent.common.enums.ErrorCode;
+import com.audioagent.common.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -44,6 +46,7 @@ import static org.mockito.Mockito.when;
 class AgentProcessingWorkflowServiceImplTest {
 
     private AgentProcessingWorkflowMapper workflowMapper;
+    private AgentConversationMapper conversationMapper;
     private AgentProcessingContextService contextService;
     private AgentProcessingPlanner planner;
     private AudioProcessingPlanService planService;
@@ -54,13 +57,14 @@ class AgentProcessingWorkflowServiceImplTest {
     @BeforeEach
     void setUp() {
         workflowMapper = mock(AgentProcessingWorkflowMapper.class);
+        conversationMapper = mock(AgentConversationMapper.class);
         contextService = mock(AgentProcessingContextService.class);
         planner = mock(AgentProcessingPlanner.class);
         planService = mock(AudioProcessingPlanService.class);
         confirmationService = mock(AudioProcessingConfirmationService.class);
         executionService = mock(AudioProcessingExecutionService.class);
         service = new AgentProcessingWorkflowServiceImpl(workflowMapper,
-                mock(AgentConversationMapper.class), contextService, planner,
+                conversationMapper, contextService, planner,
                 planService, confirmationService, executionService);
     }
 
@@ -89,7 +93,7 @@ class AgentProcessingWorkflowServiceImplTest {
         when(executionService.get(7L, 601L)).thenReturn(execution());
         when(workflowMapper.markExecuting(eq(700L), eq(601L), any()))
                 .thenReturn(1);
-        when(planService.get(31L)).thenReturn(plan());
+        when(planService.get(7L, 31L)).thenReturn(plan());
 
         var first = service.confirm(7L, 700L);
         var duplicate = service.confirm(7L, 700L);
@@ -121,6 +125,42 @@ class AgentProcessingWorkflowServiceImplTest {
                 eq(AgentWorkflowStatus.FAILED.name()), eq(null), any(),
                 any(), any());
         verify(executionService, never()).create(any(), any());
+    }
+
+    @Test
+    void foreignWorkflowCannotBeReadOrConfirmedAndCreatesNothing() {
+        AgentProcessingWorkflow foreign = waitingWorkflow();
+        foreign.setUserId(8L);
+        when(workflowMapper.selectById(700L)).thenReturn(foreign);
+        when(workflowMapper.selectByIdForUpdate(700L)).thenReturn(foreign);
+
+        BusinessException read = assertThrows(BusinessException.class,
+                () -> service.get(7L, 700L));
+        BusinessException confirm = assertThrows(BusinessException.class,
+                () -> service.confirm(7L, 700L));
+
+        assertEquals(ErrorCode.AGENT_WORKFLOW_NOT_FOUND.getCode(),
+                read.getCode());
+        assertEquals(read.getCode(), confirm.getCode());
+        assertEquals(read.getMessage(), confirm.getMessage());
+        verify(confirmationService, never()).create(any(), any());
+        verify(confirmationService, never()).confirm(any(), any());
+        verify(executionService, never()).create(any(), any());
+        verify(workflowMapper, never()).markExecuting(any(), any(), any());
+    }
+
+    @Test
+    void foreignConversationCannotListWorkflows() {
+        AgentConversation foreign = conversation();
+        foreign.setUserId(8L);
+        when(conversationMapper.selectById(10L)).thenReturn(foreign);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.listByConversation(7L, 10L));
+
+        assertEquals(ErrorCode.AGENT_CONVERSATION_NOT_FOUND.getCode(),
+                error.getCode());
+        verify(workflowMapper, never()).selectByConversation(any(), any());
     }
 
     private void seedPlanning() {

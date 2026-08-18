@@ -277,8 +277,8 @@ public class AudioFileServiceImpl implements AudioFileService {
                 || Integer.valueOf(1).equals(audioFile.getDeleted())) {
 
             throw new BusinessException(
-                    ErrorCode.PARAM_INVALID,
-                    "音频文件不存在"
+                    ErrorCode.AUDIO_FILE_NOT_FOUND,
+                    "资源不存在或不可访问"
             );
         }
 
@@ -307,8 +307,8 @@ public class AudioFileServiceImpl implements AudioFileService {
                 || Integer.valueOf(1).equals(audioFile.getDeleted())) {
 
             throw new BusinessException(
-                    ErrorCode.PARAM_INVALID,
-                    "音频文件不存在"
+                    ErrorCode.AUDIO_FILE_NOT_FOUND,
+                    "资源不存在或不可访问"
             );
         }
 

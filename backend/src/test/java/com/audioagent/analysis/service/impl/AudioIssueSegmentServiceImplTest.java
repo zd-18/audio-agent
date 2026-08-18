@@ -16,6 +16,7 @@ import com.audioagent.analysis.volume.VolumeIssueType;
 import com.audioagent.analysis.volume.VolumeSampleWindow;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
+import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -44,17 +46,19 @@ class AudioIssueSegmentServiceImplTest {
     private AudioAnalysisTaskMapper taskMapper;
     private AnalysisProperties properties;
     private AudioIssueSegmentServiceImpl service;
+    private AudioResourceOwnershipService ownershipService;
 
     @BeforeEach
     void setUp() {
         issueMapper = mock(AudioIssueSegmentMapper.class);
         taskMapper = mock(AudioAnalysisTaskMapper.class);
         properties = new AnalysisProperties();
+        ownershipService = mock(AudioResourceOwnershipService.class);
         service = new AudioIssueSegmentServiceImpl(issueMapper, taskMapper,
                 properties, new ObjectMapper(),
                 new VolumeIssueSilenceFilter(properties),
                 new VolumeIssueSeverityEvaluator(properties),
-                new NoiseRiskOverlapFilter(properties));
+                new NoiseRiskOverlapFilter(properties), ownershipService);
         when(issueMapper.insertBatch(anyList()))
                 .thenAnswer(invocation -> ((List<?>) invocation
                         .getArgument(0)).size());
@@ -112,7 +116,7 @@ class AudioIssueSegmentServiceImplTest {
                         issue(1L, "SILENCE", 0, 1_000),
                         issue(2L, "VOLUME_DROP", 2_000, 4_000))));
 
-        IssueSummaryVO result = service.getIssues(11L, null);
+        IssueSummaryVO result = service.getIssues(7L, 11L, null);
 
         assertEquals(3, result.getIssueCount());
         assertEquals(4_500, result.getTotalIssueDurationMs());
@@ -138,7 +142,7 @@ class AudioIssueSegmentServiceImplTest {
         when(issueMapper.selectByTask(11L))
                 .thenReturn(List.of());
 
-        IssueSummaryVO result = service.getIssues(11L, "silence");
+        IssueSummaryVO result = service.getIssues(7L, 11L, "silence");
 
         assertEquals(0, result.getIssueCount());
         assertEquals(0, result.getTotalIssueDurationMs());
@@ -163,7 +167,7 @@ class AudioIssueSegmentServiceImplTest {
                 issue(4L, "NOISE_RISK", 7_000, 9_000)));
 
         IssueSummaryVO result = service.getIssues(
-                11L, "volume_drop");
+                7L, 11L, "volume_drop");
 
         assertEquals(1, result.getIssueCount());
         assertEquals("VOLUME_DROP",
@@ -183,7 +187,7 @@ class AudioIssueSegmentServiceImplTest {
                 issue(1L, "SILENCE", 0, 1_000),
                 issue(2L, "VOLUME_DROP", 2_000, 4_000)));
 
-        IssueSummaryVO result = service.getIssues(11L, "   ");
+        IssueSummaryVO result = service.getIssues(7L, 11L, "   ");
 
         assertEquals(2, result.getIssueCount());
         assertEquals(2, result.getRecords().size());
@@ -202,7 +206,7 @@ class AudioIssueSegmentServiceImplTest {
 
         for (String issueType : List.of(
                 "SILENCE", "VOLUME_DROP", "VOLUME_SPIKE", "NOISE_RISK")) {
-            IssueSummaryVO result = service.getIssues(11L, issueType);
+            IssueSummaryVO result = service.getIssues(7L, 11L, issueType);
             assertEquals(1, result.getIssueCount());
             assertEquals(issueType,
                     result.getRecords().getFirst().getIssueType());
@@ -215,7 +219,7 @@ class AudioIssueSegmentServiceImplTest {
 
         BusinessException exception = assertThrows(
                 BusinessException.class,
-                () -> service.getIssues(11L, "UNKNOWN_TYPE"));
+                () -> service.getIssues(7L, 11L, "UNKNOWN_TYPE"));
 
         assertEquals(ErrorCode.PARAM_INVALID.getCode(), exception.getCode());
         assertTrue(exception.getMessage().contains(
@@ -234,7 +238,7 @@ class AudioIssueSegmentServiceImplTest {
         when(issueMapper.selectByTask(11L)).thenReturn(
                 List.of(valid, invalid));
 
-        IssueSummaryVO result = service.getIssues(11L, null);
+        IssueSummaryVO result = service.getIssues(7L, 11L, null);
 
         assertEquals(10.8, result.getRecords().get(0).getMetrics()
                 .get("deviationLu"));
@@ -251,7 +255,7 @@ class AudioIssueSegmentServiceImplTest {
                 issue(largeId, "SILENCE", 0, 1_000)));
 
         String json = new ObjectMapper().writeValueAsString(
-                service.getIssues(11L, null));
+                service.getIssues(7L, 11L, null));
 
         assertTrue(json.contains(
                 "\"issueId\":\"9007199254740993\""));
@@ -328,7 +332,7 @@ class AudioIssueSegmentServiceImplTest {
                 issue(2L, "NOISE_RISK", 2_000, 5_000),
                 issue(3L, "NOISE_RISK", 6_000, 8_000)));
 
-        IssueSummaryVO result = service.getIssues(11L, "noise_risk");
+        IssueSummaryVO result = service.getIssues(7L, 11L, "noise_risk");
 
         assertEquals(2, result.getIssueCount());
         assertEquals(2, result.getNoiseRiskCount());
@@ -348,6 +352,20 @@ class AudioIssueSegmentServiceImplTest {
         assertEquals(0, stats.issueCount());
         verify(issueMapper).deleteByTaskAndType(11L, "NOISE_RISK");
         verify(issueMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    void foreignTaskCannotReadIssuesInsideServiceBoundary() {
+        doThrow(new BusinessException(ErrorCode.AUDIO_TASK_NOT_FOUND,
+                "资源不存在或不可访问"))
+                .when(ownershipService).requireTaskOwned(7L, 11L);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.getIssues(7L, 11L, null));
+
+        assertEquals(ErrorCode.AUDIO_TASK_NOT_FOUND.getCode(),
+                error.getCode());
+        verify(issueMapper, never()).selectByTask(anyLong());
     }
 
     private NoiseRiskSegment noiseSegment() {

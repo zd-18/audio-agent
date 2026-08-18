@@ -136,9 +136,9 @@ class AudioProcessingConfirmationServiceImplTest {
     void otherUserCannotCreateOrReadConfirmation() {
         stubOwnedTask(AnalysisTaskStatus.SUCCESS, 8L);
 
-        assertCode(ErrorCode.AUDIO_FILE_ACCESS_DENIED,
+        assertCode(ErrorCode.AUDIO_TASK_NOT_FOUND,
                 () -> service.create(7L, 10L));
-        assertCode(ErrorCode.AUDIO_FILE_ACCESS_DENIED,
+        assertCode(ErrorCode.AUDIO_TASK_NOT_FOUND,
                 () -> service.getCurrent(7L, 10L));
     }
 
@@ -394,6 +394,29 @@ class AudioProcessingConfirmationServiceImplTest {
         assertCode(ErrorCode.PROCESSING_CONFIRMATION_CANCELLED,
                 () -> service.updateStep(7L, 60L, 70L,
                         request("REJECTED", false, Map.of())));
+    }
+
+    @Test
+    void foreignConfirmationCannotBeUpdatedConfirmedOrCancelled() {
+        when(confirmationMapper.selectByIdForUpdate(60L))
+                .thenReturn(confirmation("DRAFT"));
+        stubOwnedTask(AnalysisTaskStatus.SUCCESS, 8L);
+
+        assertCode(ErrorCode.PROCESSING_CONFIRMATION_NOT_FOUND,
+                () -> service.updateStep(7L, 60L, 70L,
+                        request("REJECTED", false, Map.of())));
+        assertCode(ErrorCode.PROCESSING_CONFIRMATION_NOT_FOUND,
+                () -> service.confirm(7L, 60L));
+        assertCode(ErrorCode.PROCESSING_CONFIRMATION_NOT_FOUND,
+                () -> service.cancel(7L, 60L));
+
+        verify(stepConfirmationMapper, never()).updateById(
+                any(AudioProcessingStepConfirmation.class));
+        verify(confirmationMapper, never()).updateCounts(anyLong(),
+                anyInt(), anyInt(), anyInt(), any());
+        verify(confirmationMapper, never()).confirmDraft(anyLong(), any(),
+                any());
+        verify(confirmationMapper, never()).cancelDraft(anyLong(), any());
     }
 
     private AudioProcessingStepConfirmation stubEditableStep(

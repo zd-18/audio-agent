@@ -218,8 +218,30 @@ class AgentChatPersistenceIntegrationTest {
         BusinessException accessDenied = assertThrows(
                 BusinessException.class,
                 () -> conversationService.get(7L, foreignConversation));
-        assertEquals(ErrorCode.AGENT_CONVERSATION_ACCESS_DENIED.getCode(),
+        assertEquals(ErrorCode.AGENT_CONVERSATION_NOT_FOUND.getCode(),
                 accessDenied.getCode());
+    }
+
+    @Test
+    void foreignConversationCannotListOrSendMessagesAndCreatesNothing() {
+        String foreignConversation = conversationService.create(8L,
+                createRequest("82", null)).getConversationId();
+        int before = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM agent_message", Integer.class);
+
+        BusinessException listError = assertThrows(BusinessException.class,
+                () -> chatService.listMessages(7L, foreignConversation,
+                        1, 20));
+        BusinessException sendError = assertThrows(BusinessException.class,
+                () -> chatService.send(7L, foreignConversation,
+                        messageRequest("不能访问", "foreign-1")));
+
+        assertEquals(ErrorCode.AGENT_CONVERSATION_NOT_FOUND.getCode(),
+                listError.getCode());
+        assertEquals(listError.getCode(), sendError.getCode());
+        assertEquals(listError.getMessage(), sendError.getMessage());
+        assertEquals(before, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM agent_message", Integer.class));
     }
 
     @Test
