@@ -194,6 +194,29 @@ class AudioAnalysisTaskServiceImplTest {
     }
 
     @Test
+    void failedTaskCanOnlyReturnToPendingThroughManualRetry() {
+        AudioAnalysisTask failed = new AudioAnalysisTask();
+        failed.setId(31L);
+        failed.setAudioFileId(11L);
+        failed.setAnalysisType(AnalysisType.FULL);
+        failed.setStatus(AnalysisTaskStatus.FAILED);
+        AudioAnalysisTask pending = new AudioAnalysisTask();
+        pending.setId(31L);
+        pending.setAudioFileId(11L);
+        pending.setAnalysisType(AnalysisType.FULL);
+        pending.setStatus(AnalysisTaskStatus.PENDING);
+        when(taskMapper.selectById(31L)).thenReturn(failed, pending);
+        when(taskMapper.update(any(), any())).thenReturn(1);
+
+        TaskVO retried = service.retryTask(USER_ID, 31L);
+
+        assertEquals("PENDING", retried.getStatus());
+        verify(taskMapper).update(any(), any());
+        verify(eventPublisher).publishEvent(
+                any(AudioAnalysisTaskCreatedEvent.class));
+    }
+
+    @Test
     void createTaskKeepsTheExplicitlySelectedAudioVersionAsInput() {
         long selectedVersionId = 922337203685477500L;
         AudioFile selectedVersion = new AudioFile();

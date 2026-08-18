@@ -47,6 +47,14 @@ public class AnalysisProperties {
     @Pattern(regexp = "local|rabbit")
     private String dispatchMode = "local";
 
+    /**
+     * Rabbit consumer 对 PROCESSING 任务持有执行权的最长静默时间。
+     * 执行器会在各分析阶段之间刷新 updated_at；超过该时间后，
+     * 新 delivery 才能通过带执行令牌的 CAS 接管任务。
+     */
+    @Min(30)
+    private long processingLeaseSeconds = 900;
+
     private final Retry retry = new Retry();
 
     @Valid

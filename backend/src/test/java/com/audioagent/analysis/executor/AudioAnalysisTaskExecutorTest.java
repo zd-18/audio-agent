@@ -2,6 +2,7 @@ package com.audioagent.analysis.executor;
 
 import com.audioagent.analysis.entity.AudioAnalysisResult;
 import com.audioagent.analysis.entity.AudioAnalysisTask;
+import com.audioagent.analysis.exception.AudioAnalysisException;
 import com.audioagent.analysis.mapper.AudioAnalysisResultMapper;
 import com.audioagent.analysis.mapper.AudioAnalysisTaskMapper;
 import com.audioagent.analysis.loudness.LoudnessAnalyzer;
@@ -38,8 +39,16 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
@@ -201,6 +210,49 @@ class AudioAnalysisTaskExecutorTest {
         verify(processingPlanService,
                 org.mockito.Mockito.never()).generateForOwner(any(), any());
         verify(taskMapper, times(2)).update(any(), any());
+    }
+
+    @Test
+    void concurrentPendingDeliveriesAllowOnlyOneAnalysisExecution()
+            throws Exception {
+        properties.getProcessingPlan().setEnabled(false);
+        stubSuccessfulAnalysisWithoutIssues();
+        CountDownLatch firstExecutionStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstExecution = new CountDownLatch(1);
+        when(storageService.getObject("uploads/audio.wav"))
+                .thenAnswer(invocation -> {
+                    firstExecutionStarted.countDown();
+                    assertTrue(releaseFirstExecution.await(
+                            5, TimeUnit.SECONDS));
+                    return new ByteArrayInputStream(new byte[]{1});
+                });
+        AtomicInteger updateCalls = new AtomicInteger();
+        when(taskMapper.update(any(), any())).thenAnswer(invocation -> {
+            int call = updateCalls.incrementAndGet();
+            return call == 2 ? 0 : 1;
+        });
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> winner = pool.submit(
+                    () -> executor.execute(11L, 22L));
+            assertTrue(firstExecutionStarted.await(5, TimeUnit.SECONDS));
+
+            AudioAnalysisException loser = assertThrows(
+                    AudioAnalysisException.class,
+                    () -> executor.execute(11L, 22L));
+            assertEquals(AudioAnalysisException.ErrorCodes.ALREADY_CLAIMED,
+                    loser.getErrorCode());
+
+            releaseFirstExecution.countDown();
+            winner.get(5, TimeUnit.SECONDS);
+        } finally {
+            releaseFirstExecution.countDown();
+            pool.shutdownNow();
+        }
+
+        verify(storageService, times(1)).getObject("uploads/audio.wav");
+        verify(resultMapper, times(1)).upsert(any());
     }
 
     private void stubSuccessfulAnalysisWithoutIssues() {

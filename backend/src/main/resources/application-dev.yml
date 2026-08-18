@@ -84,6 +84,7 @@ audio:
     ffmpeg-path: ${FFMPEG_EXECUTABLE:D:/ffmpeg/bin/ffmpeg.exe}
     timeout-seconds: 30
     dispatch-mode: rabbit
+    processing-lease-seconds: 900
     silence:
       enabled: true
       noise-threshold-db: -45

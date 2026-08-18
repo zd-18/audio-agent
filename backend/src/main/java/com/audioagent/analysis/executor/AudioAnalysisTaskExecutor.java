@@ -80,8 +80,30 @@ public class AudioAnalysisTaskExecutor {
      * @throws AudioAnalysisException 分析失败时抛出
      */
     public void execute(Long taskId, Long audioFileId) {
+        executeNewClaim(taskId, audioFileId, null);
+    }
+
+    /**
+     * Rabbit consumer 使用带 fencing 的执行令牌抢占并执行任务。
+     */
+    public void execute(Long taskId, Long audioFileId,
+                        String executionToken) {
+        executeNewClaim(taskId, audioFileId, executionToken);
+    }
+
+    /**
+     * stale PROCESSING 已由 listener 通过 CAS 转移执行权后继续执行。
+     */
+    public void executeClaimed(Long taskId, Long audioFileId,
+                               String executionToken) {
+        runClaimedTask(taskId, audioFileId, executionToken);
+    }
+
+    private void executeNewClaim(Long taskId, Long audioFileId,
+                                 String executionToken) {
         boolean claimed = Boolean.TRUE.equals(
-                transactionTemplate.execute(s -> claimTask(taskId))
+                transactionTemplate.execute(
+                        s -> claimTask(taskId, executionToken))
         );
 
         if (!claimed) {
@@ -96,6 +118,12 @@ public class AudioAnalysisTaskExecutor {
             );
         }
 
+        runClaimedTask(taskId, audioFileId, executionToken);
+    }
+
+    private void runClaimedTask(Long taskId, Long audioFileId,
+                                String executionToken) {
+
         log.info(
                 "Task claimed, starting analysis, taskId={}, audioFileId={}",
                 taskId,
@@ -108,10 +136,12 @@ public class AudioAnalysisTaskExecutor {
         try {
             AudioFile audioFile = lookupFile(audioFileId);
             tempFile = downloadToTempFile(audioFile);
+            renewProcessingLease(taskId, executionToken);
             log.debug("File downloaded from MinIO, taskId={}", taskId);
 
             long ffprobeStart = System.currentTimeMillis();
             AudioMetadata metadata = runProbe(tempFile);
+            renewProcessingLease(taskId, executionToken);
             long ffprobeElapsed = System.currentTimeMillis()
                     - ffprobeStart;
             log.info(
@@ -125,6 +155,7 @@ public class AudioAnalysisTaskExecutor {
                     ? -1L : metadata.getDurationMs();
             List<SilenceSegment> silenceSegments =
                     silenceDetector.detect(tempFile, audioDurationMs);
+            renewProcessingLease(taskId, executionToken);
             long silenceElapsed = System.currentTimeMillis()
                     - silenceStartedAt;
             long detectedSilenceDuration = silenceSegments.stream()
@@ -143,6 +174,7 @@ public class AudioAnalysisTaskExecutor {
             long loudnessStartedAt = System.currentTimeMillis();
             LoudnessAnalysis loudnessAnalysis = loudnessAnalyzer
                     .analyze(tempFile).orElse(null);
+            renewProcessingLease(taskId, executionToken);
             LoudnessMetrics loudness = loudnessAnalysis == null
                     || !analysisProperties.getLoudness().isEnabled()
                     ? null : loudnessAnalysis.metrics();
@@ -172,6 +204,7 @@ public class AudioAnalysisTaskExecutor {
                     taskId, audioFileId, noiseCandidates.size());
 
             transactionTemplate.execute(s -> {
+                renewProcessingLease(taskId, executionToken);
                 IssueStatistics statistics = issueSegmentService
                         .replaceSilenceSegments(taskId, audioFileId,
                                 silenceSegments);
@@ -188,7 +221,7 @@ public class AudioAnalysisTaskExecutor {
                 saveResult(taskId, audioFileId, metadata, statistics,
                         volumeStatistics, noiseStatistics, loudness);
                 generateReport(taskId, audioFileId);
-                updateTaskSuccess(taskId);
+                updateTaskSuccess(taskId, executionToken);
                 return null;
             });
 
@@ -211,7 +244,7 @@ public class AudioAnalysisTaskExecutor {
         }
     }
 
-    private boolean claimTask(Long taskId) {
+    private boolean claimTask(Long taskId, String executionToken) {
         LambdaUpdateWrapper<AudioAnalysisTask> wrapper =
                 new LambdaUpdateWrapper<>();
         wrapper.eq(AudioAnalysisTask::getId, taskId)
@@ -224,6 +257,10 @@ public class AudioAnalysisTaskExecutor {
                         LocalDateTime.now())
                 .set(AudioAnalysisTask::getUpdatedAt,
                         LocalDateTime.now());
+        if (executionToken != null) {
+            wrapper.set(AudioAnalysisTask::getLastMessageId,
+                    executionToken);
+        }
 
         int rows = taskMapper.update(null, wrapper);
         if (rows != 1) {
@@ -231,6 +268,27 @@ public class AudioAnalysisTaskExecutor {
             return false;
         }
         return true;
+    }
+
+    private void renewProcessingLease(Long taskId, String executionToken) {
+        if (executionToken == null) {
+            return;
+        }
+        LambdaUpdateWrapper<AudioAnalysisTask> wrapper =
+                new LambdaUpdateWrapper<>();
+        wrapper.eq(AudioAnalysisTask::getId, taskId)
+                .eq(AudioAnalysisTask::getStatus,
+                        AnalysisTaskStatus.PROCESSING)
+                .eq(AudioAnalysisTask::getLastMessageId, executionToken)
+                .set(AudioAnalysisTask::getUpdatedAt,
+                        LocalDateTime.now());
+        if (taskMapper.update(null, wrapper) != 1) {
+            throw new AudioAnalysisException(
+                    AudioAnalysisException.ErrorCodes.ALREADY_CLAIMED,
+                    false,
+                    "Task execution lease is no longer owned by this consumer"
+            );
+        }
     }
 
     private AudioFile lookupFile(Long audioFileId) {
@@ -453,10 +511,16 @@ public class AudioAnalysisTaskExecutor {
                 evaluation.dynamicRangeLevel());
     }
 
-    private void updateTaskSuccess(Long taskId) {
+    private void updateTaskSuccess(Long taskId, String executionToken) {
         LambdaUpdateWrapper<AudioAnalysisTask> wrapper =
                 new LambdaUpdateWrapper<>();
         wrapper.eq(AudioAnalysisTask::getId, taskId)
+                .eq(executionToken != null,
+                        AudioAnalysisTask::getStatus,
+                        AnalysisTaskStatus.PROCESSING)
+                .eq(executionToken != null,
+                        AudioAnalysisTask::getLastMessageId,
+                        executionToken)
                 .set(AudioAnalysisTask::getStatus,
                         AnalysisTaskStatus.SUCCESS)
                 .set(AudioAnalysisTask::getProgress, 100)
@@ -468,7 +532,14 @@ public class AudioAnalysisTaskExecutor {
                 .set(AudioAnalysisTask::getUpdatedAt,
                         LocalDateTime.now());
 
-        taskMapper.update(null, wrapper);
+        int rows = taskMapper.update(null, wrapper);
+        if (rows != 1) {
+            throw new AudioAnalysisException(
+                    AudioAnalysisException.ErrorCodes.ALREADY_CLAIMED,
+                    false,
+                    "Task execution lease was lost before success commit"
+            );
+        }
     }
 
     private Path downloadToTempFile(AudioFile audioFile)
