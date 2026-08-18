@@ -9,6 +9,7 @@ import com.audioagent.analysis.event.AudioAnalysisTaskCreatedEvent;
 import com.audioagent.analysis.mapper.AudioAnalysisResultMapper;
 import com.audioagent.analysis.mapper.AudioAnalysisTaskMapper;
 import com.audioagent.analysis.loudness.LoudnessEvaluator;
+import com.audioagent.analysis.outbox.AudioAnalysisTaskDispatchOutboxService;
 import com.audioagent.analysis.service.AudioAnalysisTaskService;
 import com.audioagent.analysis.vo.AudioAnalysisResultVO;
 import com.audioagent.analysis.vo.TaskVO;
@@ -19,6 +20,7 @@ import com.audioagent.common.exception.BusinessException;
 import com.audioagent.auth.service.AudioResourceOwnershipService;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.file.mapper.AudioFileMapper;
+import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -46,6 +48,8 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
     private final ApplicationEventPublisher eventPublisher;
     private final LoudnessEvaluator loudnessEvaluator;
     private final AudioResourceOwnershipService ownershipService;
+    private final AudioAnalysisTaskDispatchOutboxService dispatchOutboxService;
+    private final AnalysisProperties analysisProperties;
 
     @Override
     @Transactional(readOnly = true)
@@ -159,11 +163,7 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
                 task.getId(), audioFileId, analysisType.name()
         );
 
-        eventPublisher.publishEvent(
-                new AudioAnalysisTaskCreatedEvent(
-                        this, task.getId(), audioFileId
-                )
-        );
+        ensureInitialDispatch(task);
 
         return TaskVO.from(task);
     }
@@ -256,17 +256,32 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
 
         log.info("Task retry requested, taskId={}", taskId);
 
-        /*
-         * 事务提交后通过事件重新分发。
-         * AFTER_COMMIT 确保新状态已持久化。
-         */
-        eventPublisher.publishEvent(
-                new AudioAnalysisTaskCreatedEvent(
-                        this, taskId, task.getAudioFileId()
-                )
-        );
+        dispatchManualRetry(task);
 
         return TaskVO.from(task);
+    }
+
+    private void ensureInitialDispatch(AudioAnalysisTask task) {
+        if (isRabbitDispatch()) {
+            dispatchOutboxService.createInitialDispatch(task.getId());
+            return;
+        }
+        eventPublisher.publishEvent(new AudioAnalysisTaskCreatedEvent(
+                this, task.getId(), task.getAudioFileId()));
+    }
+
+    private void dispatchManualRetry(AudioAnalysisTask task) {
+        if (isRabbitDispatch()) {
+            dispatchOutboxService.reactivateForManualRetry(task.getId());
+            return;
+        }
+        eventPublisher.publishEvent(new AudioAnalysisTaskCreatedEvent(
+                this, task.getId(), task.getAudioFileId()));
+    }
+
+    private boolean isRabbitDispatch() {
+        return "rabbit".equalsIgnoreCase(
+                analysisProperties.getDispatchMode());
     }
 
     private TaskVO buildTaskVO(AudioAnalysisTask task,

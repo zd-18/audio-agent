@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -41,6 +42,7 @@ class OutboxWorkerIntegrationTest {
         dataSource.setURL("jdbc:h2:mem:outbox;MODE=MySQL;"
                 + "DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE");
         jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute("DROP TABLE IF EXISTS audio_analysis_task");
         jdbc.execute("DROP TABLE IF EXISTS outbox_event");
         jdbc.execute("""
                 CREATE TABLE outbox_event (
@@ -58,6 +60,12 @@ class OutboxWorkerIntegrationTest {
                     created_at TIMESTAMP NOT NULL,
                     updated_at TIMESTAMP NOT NULL,
                     published_at TIMESTAMP NULL
+                )
+                """);
+        jdbc.execute("""
+                CREATE TABLE audio_analysis_task (
+                    id BIGINT PRIMARY KEY,
+                    status VARCHAR(20) NOT NULL
                 )
                 """);
 
@@ -232,6 +240,55 @@ class OutboxWorkerIntegrationTest {
                 mapper.selectById(6L).getStatus());
     }
 
+    @Test
+    void analysisDispatchAckMarksOutboxPublishedAndLeavesTaskPending() {
+        insertAnalysisDispatch(31L, 10L);
+        sender.enqueueCompleted(OutboxBrokerConfirmation.ack());
+
+        worker.scanAndPublish();
+
+        assertEquals(OutboxEventStatus.PUBLISHED,
+                mapper.selectById(10L).getStatus());
+        assertEquals("PENDING", taskStatus(31L));
+    }
+
+    @Test
+    void analysisDispatchNackSchedulesOutboxRetryAndLeavesTaskPending() {
+        insertAnalysisDispatch(32L, 11L);
+        sender.enqueueCompleted(
+                OutboxBrokerConfirmation.nack("returned unroutable"));
+
+        worker.scanAndPublish();
+
+        OutboxEvent event = mapper.selectById(11L);
+        assertEquals(OutboxEventStatus.PENDING, event.getStatus());
+        assertEquals(1, event.getRetryCount());
+        assertNotNull(event.getNextRetryAt());
+        assertEquals("PENDING", taskStatus(32L));
+    }
+
+    @Test
+    void lostConfirmIsResentByRestartedWorkerWithoutChangingTask() {
+        insertAnalysisDispatch(33L, 12L);
+        sender.enqueue(CompletableFuture.failedFuture(
+                new TimeoutException("confirm lost")));
+
+        worker.scanAndPublish();
+
+        assertEquals(OutboxEventStatus.PENDING,
+                mapper.selectById(12L).getStatus());
+        makeRetryDue(12L);
+        sender.enqueueCompleted(OutboxBrokerConfirmation.ack());
+        OutboxWorker restarted = new OutboxWorker(
+                mapper, sender, properties, "worker-after-restart");
+        restarted.scanAndPublish();
+
+        assertEquals(List.of(12L, 12L), sender.sentIds());
+        assertEquals(OutboxEventStatus.PUBLISHED,
+                mapper.selectById(12L).getStatus());
+        assertEquals("PENDING", taskStatus(33L));
+    }
+
     private void insertPending(Long id) {
         LocalDateTime now = LocalDateTime.now().minusSeconds(1);
         OutboxEvent event = new OutboxEvent();
@@ -250,6 +307,29 @@ class OutboxWorkerIntegrationTest {
     private void makeRetryDue(Long id) {
         jdbc.update("UPDATE outbox_event SET next_retry_at = ? WHERE id = ?",
                 LocalDateTime.now().minusSeconds(1), id);
+    }
+
+    private void insertAnalysisDispatch(Long taskId, Long eventId) {
+        jdbc.update("INSERT INTO audio_analysis_task (id, status) "
+                + "VALUES (?, 'PENDING')", taskId);
+        LocalDateTime now = LocalDateTime.now().minusSeconds(1);
+        OutboxEvent event = new OutboxEvent();
+        event.setId(eventId);
+        event.setAggregateType("AUDIO_ANALYSIS_TASK");
+        event.setAggregateId(taskId.toString());
+        event.setEventType("AUDIO_ANALYSIS_TASK_CREATED");
+        event.setPayload("{\"taskId\":" + taskId + "}");
+        event.setStatus(OutboxEventStatus.PENDING);
+        event.setRetryCount(0);
+        event.setCreatedAt(now);
+        event.setUpdatedAt(now);
+        mapper.insert(event);
+    }
+
+    private String taskStatus(Long taskId) {
+        return jdbc.queryForObject(
+                "SELECT status FROM audio_analysis_task WHERE id = ?",
+                String.class, taskId);
     }
 
     private static final class StubSender implements OutboxMessageSender {

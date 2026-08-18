@@ -1,7 +1,12 @@
 package com.audioagent.outbox.worker;
 
+import com.audioagent.analysis.mq.AudioAnalysisRabbitConstants;
+import com.audioagent.analysis.mq.AudioAnalysisTaskMessage;
+import com.audioagent.analysis.outbox.AudioAnalysisTaskDispatchEvent;
 import com.audioagent.outbox.config.OutboxProperties;
 import com.audioagent.outbox.entity.OutboxEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
@@ -12,6 +17,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.concurrent.CompletableFuture;
 
 @Component
@@ -25,13 +31,14 @@ public class RabbitOutboxMessageSender implements OutboxMessageSender {
 
     private final RabbitTemplate rabbitTemplate;
     private final OutboxProperties properties;
+    private final ObjectMapper objectMapper;
 
     @Override
     public CompletableFuture<OutboxBrokerConfirmation> send(
             OutboxEvent event) {
         String eventId = event.getId().toString();
-        Message message = MessageBuilder
-                .withBody(event.getPayload().getBytes(StandardCharsets.UTF_8))
+        Destination destination = destination(event);
+        Message message = MessageBuilder.withBody(body(event))
                 .setContentType(MessageProperties.CONTENT_TYPE_JSON)
                 .setContentEncoding(StandardCharsets.UTF_8.name())
                 .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
@@ -46,7 +53,7 @@ public class RabbitOutboxMessageSender implements OutboxMessageSender {
 
         CorrelationData correlationData = new CorrelationData(eventId);
         rabbitTemplate.send(
-                properties.getExchange(), properties.getRoutingKey(),
+                destination.exchange(), destination.routingKey(),
                 message, correlationData);
 
         return correlationData.getFuture().thenApply(confirm -> {
@@ -61,5 +68,47 @@ public class RabbitOutboxMessageSender implements OutboxMessageSender {
             }
             return OutboxBrokerConfirmation.ack();
         });
+    }
+
+    private Destination destination(OutboxEvent event) {
+        if (AudioAnalysisTaskDispatchEvent.EVENT_TYPE.equals(
+                event.getEventType())) {
+            return new Destination(AudioAnalysisRabbitConstants.EXCHANGE,
+                    AudioAnalysisRabbitConstants.TASK_ROUTING_KEY);
+        }
+        return new Destination(
+                properties.getExchange(), properties.getRoutingKey());
+    }
+
+    private byte[] body(OutboxEvent event) {
+        if (!AudioAnalysisTaskDispatchEvent.EVENT_TYPE.equals(
+                event.getEventType())) {
+            return event.getPayload().getBytes(StandardCharsets.UTF_8);
+        }
+        try {
+            AudioAnalysisTaskDispatchEvent.Payload payload =
+                    objectMapper.readValue(event.getPayload(),
+                            AudioAnalysisTaskDispatchEvent.Payload.class);
+            if (payload.taskId() == null || payload.taskId() <= 0) {
+                throw new IllegalArgumentException(
+                        "Invalid analysis task dispatch payload");
+            }
+            String messageId = event.getId().toString();
+            AudioAnalysisTaskMessage message = AudioAnalysisTaskMessage
+                    .builder()
+                    .taskId(payload.taskId())
+                    .messageId(messageId)
+                    .originalMessageId(messageId)
+                    .retryCount(0)
+                    .publishedAt(LocalDateTime.now())
+                    .build();
+            return objectMapper.writeValueAsBytes(message);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(
+                    "Invalid analysis task dispatch payload", e);
+        }
+    }
+
+    private record Destination(String exchange, String routingKey) {
     }
 }

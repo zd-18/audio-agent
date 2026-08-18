@@ -1,6 +1,7 @@
 package com.audioagent.outbox.mapper;
 
 import com.audioagent.outbox.entity.OutboxEvent;
+import com.audioagent.outbox.model.OutboxEventStatus;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -116,5 +117,23 @@ public interface OutboxEventMapper extends BaseMapper<OutboxEvent> {
             """)
     int retryFailed(
             @Param("id") Long id,
+            @Param("now") LocalDateTime now);
+
+    @Update("""
+            UPDATE outbox_event
+            SET status = 'PENDING',
+                retry_count = 0,
+                next_retry_at = #{now},
+                locked_at = NULL,
+                lock_owner = NULL,
+                last_error = NULL,
+                published_at = NULL,
+                updated_at = #{now}
+            WHERE id = #{id}
+              AND status = #{expectedStatus}
+            """)
+    int reactivate(
+            @Param("id") Long id,
+            @Param("expectedStatus") OutboxEventStatus expectedStatus,
             @Param("now") LocalDateTime now);
 }

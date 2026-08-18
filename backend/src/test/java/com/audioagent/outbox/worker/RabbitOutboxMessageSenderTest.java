@@ -2,10 +2,14 @@ package com.audioagent.outbox.worker;
 
 import com.audioagent.outbox.config.OutboxProperties;
 import com.audioagent.outbox.entity.OutboxEvent;
+import com.audioagent.analysis.outbox.AudioAnalysisTaskDispatchEvent;
+import com.audioagent.analysis.mq.AudioAnalysisTaskMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageDeliveryMode;
+import org.springframework.amqp.core.ReturnedMessage;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
@@ -26,7 +30,8 @@ class RabbitOutboxMessageSenderTest {
         RabbitTemplate template = mock(RabbitTemplate.class);
         OutboxProperties properties = new OutboxProperties();
         RabbitOutboxMessageSender sender =
-                new RabbitOutboxMessageSender(template, properties);
+                new RabbitOutboxMessageSender(
+                        template, properties, new ObjectMapper());
         ArgumentCaptor<Message> messageCaptor =
                 ArgumentCaptor.forClass(Message.class);
         ArgumentCaptor<CorrelationData> correlationCaptor =
@@ -62,7 +67,8 @@ class RabbitOutboxMessageSenderTest {
         RabbitTemplate template = mock(RabbitTemplate.class);
         OutboxProperties properties = new OutboxProperties();
         RabbitOutboxMessageSender sender =
-                new RabbitOutboxMessageSender(template, properties);
+                new RabbitOutboxMessageSender(
+                        template, properties, new ObjectMapper());
         doAnswer(invocation -> {
             CorrelationData correlation = invocation.getArgument(3);
             correlation.getFuture().complete(
@@ -77,6 +83,73 @@ class RabbitOutboxMessageSenderTest {
 
         assertTrue(!result.acknowledged());
         assertEquals("exchange missing", result.reason());
+    }
+
+    @Test
+    void mapsReturnedMessageToFailedConfirmation() {
+        RabbitTemplate template = mock(RabbitTemplate.class);
+        RabbitOutboxMessageSender sender =
+                new RabbitOutboxMessageSender(template,
+                        new OutboxProperties(), new ObjectMapper());
+        doAnswer(invocation -> {
+            CorrelationData correlation = invocation.getArgument(3);
+            Message returnedMessage = invocation.getArgument(2);
+            correlation.setReturned(new ReturnedMessage(
+                    returnedMessage, 312, "NO_ROUTE",
+                    "audio-agent.events", "outbox.event"));
+            correlation.getFuture().complete(
+                    new CorrelationData.Confirm(true, null));
+            return null;
+        }).when(template).send(
+                eq("audio-agent.events"), eq("outbox.event"),
+                org.mockito.ArgumentMatchers.any(Message.class),
+                org.mockito.ArgumentMatchers.any(CorrelationData.class));
+
+        OutboxBrokerConfirmation result = sender.send(event()).join();
+
+        assertTrue(!result.acknowledged());
+        assertTrue(result.reason().contains("unroutable"));
+    }
+
+    @Test
+    void analysisDispatchEventGoesDirectlyToFinalAnalysisDestination()
+            throws Exception {
+        RabbitTemplate template = mock(RabbitTemplate.class);
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        RabbitOutboxMessageSender sender = new RabbitOutboxMessageSender(
+                template, new OutboxProperties(), mapper);
+        ArgumentCaptor<Message> messageCaptor =
+                ArgumentCaptor.forClass(Message.class);
+        doAnswer(invocation -> {
+            CorrelationData correlation = invocation.getArgument(3);
+            correlation.getFuture().complete(
+                    new CorrelationData.Confirm(true, null));
+            return null;
+        }).when(template).send(
+                eq("audio.analysis.exchange"), eq("audio.analysis.task"),
+                org.mockito.ArgumentMatchers.any(Message.class),
+                org.mockito.ArgumentMatchers.any(CorrelationData.class));
+        OutboxEvent event = event();
+        event.setId(700L);
+        event.setAggregateType(
+                AudioAnalysisTaskDispatchEvent.AGGREGATE_TYPE);
+        event.setAggregateId("31");
+        event.setEventType(AudioAnalysisTaskDispatchEvent.EVENT_TYPE);
+        event.setPayload("{\"taskId\":31}");
+
+        OutboxBrokerConfirmation confirmation = sender.send(event).join();
+
+        verify(template).send(eq("audio.analysis.exchange"),
+                eq("audio.analysis.task"), messageCaptor.capture(),
+                org.mockito.ArgumentMatchers.any(CorrelationData.class));
+        Message sent = messageCaptor.getValue();
+        AudioAnalysisTaskMessage body = mapper.readValue(
+                sent.getBody(), AudioAnalysisTaskMessage.class);
+        assertEquals(31L, body.getTaskId());
+        assertEquals("700", body.getMessageId());
+        assertEquals("700", body.getOriginalMessageId());
+        assertEquals("700", sent.getMessageProperties().getMessageId());
+        assertTrue(confirmation.acknowledged());
     }
 
     private OutboxEvent event() {

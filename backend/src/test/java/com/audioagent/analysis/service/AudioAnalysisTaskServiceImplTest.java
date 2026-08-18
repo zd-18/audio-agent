@@ -9,6 +9,7 @@ import com.audioagent.analysis.enums.AnalysisType;
 import com.audioagent.analysis.mapper.AudioAnalysisResultMapper;
 import com.audioagent.analysis.mapper.AudioAnalysisTaskMapper;
 import com.audioagent.analysis.loudness.LoudnessEvaluator;
+import com.audioagent.analysis.outbox.AudioAnalysisTaskDispatchOutboxService;
 import com.audioagent.analysis.service.impl.AudioAnalysisTaskServiceImpl;
 import com.audioagent.analysis.vo.TaskListVO;
 import com.audioagent.analysis.vo.TaskVO;
@@ -18,6 +19,7 @@ import com.audioagent.common.exception.BusinessException;
 import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.file.entity.AudioFile;
 import com.audioagent.auth.service.AudioResourceOwnershipService;
+import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,6 +52,10 @@ class AudioAnalysisTaskServiceImplTest {
     private LoudnessEvaluator loudnessEvaluator;
     @Mock
     private AudioResourceOwnershipService ownershipService;
+    @Mock
+    private AudioAnalysisTaskDispatchOutboxService dispatchOutboxService;
+    @Mock
+    private AnalysisProperties analysisProperties;
     @InjectMocks
     private AudioAnalysisTaskServiceImpl service;
 
@@ -195,6 +201,7 @@ class AudioAnalysisTaskServiceImplTest {
 
     @Test
     void failedTaskCanOnlyReturnToPendingThroughManualRetry() {
+        when(analysisProperties.getDispatchMode()).thenReturn("rabbit");
         AudioAnalysisTask failed = new AudioAnalysisTask();
         failed.setId(31L);
         failed.setAudioFileId(11L);
@@ -212,8 +219,69 @@ class AudioAnalysisTaskServiceImplTest {
 
         assertEquals("PENDING", retried.getStatus());
         verify(taskMapper).update(any(), any());
-        verify(eventPublisher).publishEvent(
-                any(AudioAnalysisTaskCreatedEvent.class));
+        verify(dispatchOutboxService).reactivateForManualRetry(31L);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void rabbitTaskCreationWritesDispatchOutboxInsteadOfApplicationEvent() {
+        when(analysisProperties.getDispatchMode()).thenReturn("rabbit");
+        AudioFile file = new AudioFile();
+        file.setId(11L);
+        file.setUserId(USER_ID);
+        file.setDeleted(0);
+        when(audioFileMapper.selectById(11L)).thenReturn(file);
+        when(taskMapper.insert(any(AudioAnalysisTask.class)))
+                .thenAnswer(invocation -> {
+                    AudioAnalysisTask task = invocation.getArgument(0);
+                    task.setId(31L);
+                    return 1;
+                });
+
+        service.createTaskFromUploadedFile(11L, USER_ID, 501L);
+
+        verify(dispatchOutboxService).createInitialDispatch(31L);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void dispatchOutboxFailureFailsRabbitTaskCreation() {
+        when(analysisProperties.getDispatchMode()).thenReturn("rabbit");
+        AudioFile file = new AudioFile();
+        file.setId(11L);
+        file.setUserId(USER_ID);
+        file.setDeleted(0);
+        when(audioFileMapper.selectById(11L)).thenReturn(file);
+        when(taskMapper.insert(any(AudioAnalysisTask.class)))
+                .thenAnswer(invocation -> {
+                    AudioAnalysisTask task = invocation.getArgument(0);
+                    task.setId(31L);
+                    return 1;
+                });
+        doThrow(new IllegalStateException("outbox insert failed"))
+                .when(dispatchOutboxService).createInitialDispatch(31L);
+
+        assertThrows(IllegalStateException.class,
+                () -> service.createTaskFromUploadedFile(
+                        11L, USER_ID, 501L));
+
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void taskInsertFailureDoesNotCreateDispatchOutbox() {
+        AudioFile file = new AudioFile();
+        file.setId(11L);
+        file.setUserId(USER_ID);
+        file.setDeleted(0);
+        when(audioFileMapper.selectById(11L)).thenReturn(file);
+        when(taskMapper.insert(any(AudioAnalysisTask.class))).thenReturn(0);
+
+        assertThrows(BusinessException.class,
+                () -> service.createTaskFromUploadedFile(
+                        11L, USER_ID, 501L));
+
+        verifyNoInteractions(dispatchOutboxService);
     }
 
     @Test
