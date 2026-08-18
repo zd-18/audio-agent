@@ -44,3 +44,9 @@ audio:
     exchange: audio-agent.events
     routing-key: outbox.event
     queue: audio-agent.outbox.events
+    consumer-retry-queue: audio-agent.outbox.events.retry
+    consumer-retry-routing-key: outbox.event.retry
+    consumer-dlq: audio-agent.outbox.events.dlq
+    consumer-dlq-routing-key: outbox.event.dlq
+    consumer-max-retry-count: 3
+    consumer-retry-delay-ms: 5000

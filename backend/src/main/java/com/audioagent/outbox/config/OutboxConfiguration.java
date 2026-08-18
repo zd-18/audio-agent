@@ -37,4 +37,38 @@ public class OutboxConfiguration {
                 .to(outboxExchange)
                 .with(properties.getRoutingKey());
     }
+
+    @Bean
+    Queue outboxConsumerRetryQueue(OutboxProperties properties) {
+        return QueueBuilder.durable(properties.getConsumerRetryQueue())
+                .ttl(properties.getConsumerRetryDelayMs())
+                .deadLetterExchange(properties.getExchange())
+                .deadLetterRoutingKey(properties.getRoutingKey())
+                .build();
+    }
+
+    @Bean
+    Binding outboxConsumerRetryBinding(
+            TopicExchange outboxExchange,
+            Queue outboxConsumerRetryQueue,
+            OutboxProperties properties) {
+        return BindingBuilder.bind(outboxConsumerRetryQueue)
+                .to(outboxExchange)
+                .with(properties.getConsumerRetryRoutingKey());
+    }
+
+    @Bean
+    Queue outboxConsumerDlq(OutboxProperties properties) {
+        return QueueBuilder.durable(properties.getConsumerDlq()).build();
+    }
+
+    @Bean
+    Binding outboxConsumerDlqBinding(
+            TopicExchange outboxExchange,
+            Queue outboxConsumerDlq,
+            OutboxProperties properties) {
+        return BindingBuilder.bind(outboxConsumerDlq)
+                .to(outboxExchange)
+                .with(properties.getConsumerDlqRoutingKey());
+    }
 }

@@ -9,4 +9,6 @@ public interface OutboxEventService {
             String aggregateId,
             String eventType,
             String jsonPayload);
+
+    OutboxEvent retryFailed(Long eventId);
 }

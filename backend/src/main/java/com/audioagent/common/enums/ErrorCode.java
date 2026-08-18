@@ -137,6 +137,10 @@ public enum ErrorCode {
     AGENT_PLAN_INVALID(40916, "Agent processing plan is invalid"),
     AGENT_PLAN_FAILED(40917, "Agent processing plan could not be generated"),
 
+    // Outbox internal operations 41001-41099
+    OUTBOX_EVENT_NOT_FOUND(41001, "Outbox event not found"),
+    OUTBOX_EVENT_NOT_RETRYABLE(41002, "Outbox event is not retryable"),
+
    // MinIO相关 40401-40499
 MINIO_UPLOAD_FAILED(40401, "MinIO上传失败"),
 MINIO_OBJECT_NOT_FOUND(40402, "MinIO对象不存在"),

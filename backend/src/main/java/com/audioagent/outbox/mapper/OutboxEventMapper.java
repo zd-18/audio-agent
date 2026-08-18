@@ -101,4 +101,20 @@ public interface OutboxEventMapper extends BaseMapper<OutboxEvent> {
             @Param("nextRetryAt") LocalDateTime nextRetryAt,
             @Param("lastError") String lastError,
             @Param("now") LocalDateTime now);
+
+    @Update("""
+            UPDATE outbox_event
+            SET status = 'PENDING',
+                retry_count = 0,
+                next_retry_at = #{now},
+                locked_at = NULL,
+                lock_owner = NULL,
+                last_error = NULL,
+                updated_at = #{now}
+            WHERE id = #{id}
+              AND status = 'FAILED'
+            """)
+    int retryFailed(
+            @Param("id") Long id,
+            @Param("now") LocalDateTime now);
 }

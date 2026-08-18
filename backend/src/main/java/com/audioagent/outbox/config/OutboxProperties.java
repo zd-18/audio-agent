@@ -44,4 +44,24 @@ public class OutboxProperties {
 
     @NotBlank
     private String queue = "audio-agent.outbox.events";
+
+    @NotBlank
+    private String consumerRetryQueue =
+            "audio-agent.outbox.events.retry";
+
+    @NotBlank
+    private String consumerRetryRoutingKey =
+            "outbox.event.retry";
+
+    @NotBlank
+    private String consumerDlq = "audio-agent.outbox.events.dlq";
+
+    @NotBlank
+    private String consumerDlqRoutingKey = "outbox.event.dlq";
+
+    @Min(1)
+    private int consumerMaxRetryCount = 3;
+
+    @Min(1_000)
+    private int consumerRetryDelayMs = 5_000;
 }

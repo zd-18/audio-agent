@@ -172,6 +172,48 @@ class OutboxWorkerIntegrationTest {
     }
 
     @Test
+    void manualRetryCasClearsFailureAndStartsNewRetryCycle() {
+        insertPending(7L);
+        LocalDateTime lockedAt = LocalDateTime.now().minusMinutes(2);
+        jdbc.update("""
+                        UPDATE outbox_event
+                        SET status = 'FAILED', retry_count = 5,
+                            lock_owner = 'old-worker', locked_at = ?,
+                            last_error = 'broker unavailable',
+                            next_retry_at = NULL
+                        WHERE id = 7
+                        """, lockedAt);
+
+        int updated = mapper.retryFailed(7L, LocalDateTime.now());
+
+        assertEquals(1, updated);
+        OutboxEvent retried = mapper.selectById(7L);
+        assertEquals(OutboxEventStatus.PENDING, retried.getStatus());
+        assertEquals(0, retried.getRetryCount());
+        assertNull(retried.getLockOwner());
+        assertNull(retried.getLockedAt());
+        assertNull(retried.getLastError());
+        assertNotNull(retried.getNextRetryAt());
+    }
+
+    @Test
+    void manualRetryCasCannotTakePublishedOrProcessingEvents() {
+        insertPending(8L);
+        insertPending(9L);
+        jdbc.update("UPDATE outbox_event SET status = 'PUBLISHED' "
+                + "WHERE id = 8");
+        jdbc.update("UPDATE outbox_event SET status = 'PROCESSING' "
+                + "WHERE id = 9");
+
+        assertEquals(0, mapper.retryFailed(8L, LocalDateTime.now()));
+        assertEquals(0, mapper.retryFailed(9L, LocalDateTime.now()));
+        assertEquals(OutboxEventStatus.PUBLISHED,
+                mapper.selectById(8L).getStatus());
+        assertEquals(OutboxEventStatus.PROCESSING,
+                mapper.selectById(9L).getStatus());
+    }
+
+    @Test
     void twoWorkersCannotClaimSameEventConcurrently() {
         insertPending(6L);
         CompletableFuture<OutboxBrokerConfirmation> confirm =

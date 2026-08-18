@@ -5,7 +5,10 @@ import com.audioagent.outbox.mapper.OutboxEventMapper;
 import com.audioagent.outbox.model.OutboxEventStatus;
 import com.audioagent.outbox.payload.OutboxPayloadCodec;
 import com.audioagent.outbox.service.OutboxEventService;
+import com.audioagent.common.enums.ErrorCode;
+import com.audioagent.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
@@ -14,6 +17,7 @@ import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OutboxEventServiceImpl implements OutboxEventService {
 
     private final OutboxEventMapper eventMapper;
@@ -52,5 +56,43 @@ public class OutboxEventServiceImpl implements OutboxEventService {
             throw new IllegalStateException("Failed to insert outbox event");
         }
         return event;
+    }
+
+    @Override
+    @Transactional
+    public OutboxEvent retryFailed(Long eventId) {
+        Assert.notNull(eventId, "eventId must not be null");
+        OutboxEvent current = eventMapper.selectById(eventId);
+        validateRetryable(current);
+
+        LocalDateTime now = LocalDateTime.now();
+        if (eventMapper.retryFailed(eventId, now) != 1) {
+            OutboxEvent latest = eventMapper.selectById(eventId);
+            validateRetryable(latest);
+            throw new BusinessException(
+                    ErrorCode.OUTBOX_EVENT_NOT_RETRYABLE,
+                    "Outbox event state changed while retrying");
+        }
+
+        log.warn("Outbox FAILED event manually reset for delivery, "
+                        + "eventId={}, previousRetryCount={}",
+                eventId, current.getRetryCount());
+        OutboxEvent retried = eventMapper.selectById(eventId);
+        if (retried == null) {
+            throw new BusinessException(ErrorCode.OUTBOX_EVENT_NOT_FOUND);
+        }
+        return retried;
+    }
+
+    private void validateRetryable(OutboxEvent event) {
+        if (event == null) {
+            throw new BusinessException(ErrorCode.OUTBOX_EVENT_NOT_FOUND);
+        }
+        if (event.getStatus() != OutboxEventStatus.FAILED) {
+            throw new BusinessException(
+                    ErrorCode.OUTBOX_EVENT_NOT_RETRYABLE,
+                    "Only FAILED outbox events can be retried; current status="
+                            + event.getStatus());
+        }
     }
 }
