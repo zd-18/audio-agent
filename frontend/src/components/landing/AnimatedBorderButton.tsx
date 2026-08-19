@@ -1,9 +1,10 @@
 import { ArrowRightOutlined } from '@ant-design/icons'
-import { Link } from 'react-router-dom'
+import { Link, type LinkProps } from 'react-router-dom'
 
 interface AnimatedBorderButtonProps {
   children: string
   to?: string
+  state?: LinkProps['state']
   href?: string
   variant?: 'primary' | 'secondary' | 'compact'
 }
@@ -11,6 +12,7 @@ interface AnimatedBorderButtonProps {
 export default function AnimatedBorderButton({
   children,
   to,
+  state,
   href,
   variant = 'primary',
 }: AnimatedBorderButtonProps) {
@@ -25,7 +27,7 @@ export default function AnimatedBorderButton({
   return (
     <span className={`landing-action-border landing-action-border--${variant}`}>
       {to ? (
-        <Link className={className} to={to}>
+        <Link className={className} to={to} state={state}>
           {content}
         </Link>
       ) : (

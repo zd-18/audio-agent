@@ -1,4 +1,4 @@
-const issueWords = ['静音', '噪声', '爆音', '音量异常']
+const issueWords = ['长静音', '背景噪声', '爆音', '音量异常']
 
 export default function DynamicIssueHeading() {
   return (
@@ -8,12 +8,12 @@ export default function DynamicIssueHeading() {
         <br />
         <span>让问题被看见。</span>
       </h1>
-      <p className="landing-issue-rotator" aria-label="自动发现静音、噪声、爆音和音量异常">
+      <p className="landing-issue-rotator" aria-label="自动发现长静音、背景噪声、爆音和音量异常问题">
         <span aria-hidden="true" className="landing-issue-rotator__label">自动发现</span>
         <span aria-hidden="true" className="landing-issue-rotator__words">
           {issueWords.map((word, index) => (
             <span key={word} style={{ '--word-index': index } as React.CSSProperties}>
-              {word}
+              「{word}」
             </span>
           ))}
         </span>

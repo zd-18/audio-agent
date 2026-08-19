@@ -115,9 +115,11 @@ export default function LandingHeader({ activeSection, isScrolled, onNavigate }:
               </button>
             </Dropdown>
           )}
-          <AnimatedBorderButton to="/dashboard" variant="compact">
-            进入工作台
-          </AnimatedBorderButton>
+          {isAuthenticated && (
+            <AnimatedBorderButton to="/dashboard" variant="compact">
+              进入工作台
+            </AnimatedBorderButton>
+          )}
         </div>
 
         <button

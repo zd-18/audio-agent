@@ -8,7 +8,7 @@ const issueSummary = [
 
 export default function AnalysisPreviewCard() {
   return (
-    <article className="landing-analysis-card" aria-label="模拟音频问题分析结果">
+    <article className="landing-analysis-card" aria-label="音频问题分析演示数据">
       <header className="landing-analysis-card__header">
         <div>
           <span className="landing-analysis-card__icon" aria-hidden="true"><LineChartOutlined /></span>
@@ -19,7 +19,7 @@ export default function AnalysisPreviewCard() {
         </div>
         <div className="landing-analysis-card__badges">
           <span className="landing-analysis-card__score">音频质量 <strong>82</strong></span>
-          <span className="landing-analysis-card__mock">MOCK</span>
+          <span className="landing-analysis-card__mock">演示数据</span>
         </div>
       </header>
 

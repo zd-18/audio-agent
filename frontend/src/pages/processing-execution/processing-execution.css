@@ -577,6 +577,27 @@
 
 .processing-version-item__actions .ant-btn { min-height: 44px; }
 
+/* The selected state is already carried by the item border and status label;
+   keep the action itself quiet and aligned with the neighbouring controls. */
+.processing-version-item.is-selected .processing-version-item__actions .ant-btn:first-child {
+  border-color: rgba(155, 109, 255, .34) !important;
+  background: rgba(155, 109, 255, .12) !important;
+  box-shadow: none !important;
+  color: #d8ccf3 !important;
+  font-weight: 500;
+}
+
+.processing-version-item.is-selected .processing-version-item__actions .ant-btn:first-child:hover,
+.processing-version-item.is-selected .processing-version-item__actions .ant-btn:first-child:focus-visible {
+  border-color: rgba(155, 109, 255, .5) !important;
+  background: rgba(155, 109, 255, .18) !important;
+  color: #eee8ff !important;
+}
+
+.processing-version-item.is-selected .processing-version-item__actions .ant-btn:first-child .anticon {
+  color: #bca6e8;
+}
+
 .processing-audio-comparison {
   min-width: 0;
   padding-top: 22px;
@@ -586,6 +607,27 @@
 .processing-audio-comparison__switches { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
 .processing-audio-comparison__switches .ant-btn { min-height: 40px; }
 .processing-audio-comparison .report-audio-player { box-shadow: none; }
+
+@media (min-width: 1280px) {
+  .processing-execution-result {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+    align-items: start;
+    column-gap: 28px;
+  }
+
+  .processing-execution-result__heading,
+  .processing-execution-result__metadata,
+  .processing-execution-result__skeleton,
+  .processing-execution-result > .ant-alert {
+    grid-column: 1 / -1;
+  }
+
+  .processing-version-history,
+  .processing-audio-comparison {
+    width: 100%;
+  }
+}
 
 .processing-execution-entry {
   padding: 22px;

@@ -65,6 +65,14 @@
   backdrop-filter: blur(16px);
 }
 
+/* Keep the collapsed rail compact so the workbench content has room to breathe. */
+.workbench-sidebar.ant-layout-sider-collapsed {
+  width: 64px !important;
+  min-width: 64px !important;
+  max-width: 64px !important;
+  flex: 0 0 64px !important;
+}
+
 .workbench-sidebar__inner {
   display: flex;
   flex-direction: column;

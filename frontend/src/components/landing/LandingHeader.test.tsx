@@ -53,11 +53,12 @@ describe('LandingHeader authentication state', () => {
     })
   })
 
-  it('shows login and the protected workbench entry when anonymous', () => {
+  it('shows only login when anonymous', () => {
     renderHeader()
 
     expect(screen.getByRole('link', { name: '登录' })).toHaveAttribute('href', '/login')
-    expect(screen.getByRole('link', { name: '进入工作台' })).toHaveAttribute('href', '/dashboard')
+    expect(screen.queryByRole('link', { name: '立即体验' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '进入工作台' })).not.toBeInTheDocument()
   })
 
   it('shows the current user instead of login when authenticated', () => {
