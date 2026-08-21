@@ -16,8 +16,8 @@ export default function RecommendationList({ recommendations, onLocate, onPrevie
       <div className="report-section-heading">
         <div>
           <span className="report-section-kicker">NEXT STEPS</span>
-          <h2 id="recommendations-title">处理建议</h2>
-          <p>按照报告给出的优先级，先处理对整体听感影响最大的片段。</p>
+          <h2 id="recommendations-title">推荐处理方式</h2>
+          <p>这些建议仅来自本次诊断；点击主操作后会进入统一处理方案进行确认。</p>
         </div>
       </div>
       {recommendations.length === 0 ? (
@@ -33,6 +33,12 @@ export default function RecommendationList({ recommendations, onLocate, onPrevie
                 <div>
                   <span className="report-priority">{PRIORITY_META[priority].label}</span>
                   <p>{recommendation.message || '当前建议未提供详细说明。'}</p>
+                  {recommendation.recommendedMethod && (
+                    <small><strong>推荐方式：</strong>{recommendation.recommendedMethod}</small>
+                  )}
+                  {recommendation.recommendedParameters && (
+                    <small><strong>推荐参数：</strong>{recommendation.recommendedParameters}</small>
+                  )}
                   {hasRange && <small>对应片段：{formatTimestamp(recommendation.startMs)} – {formatTimestamp(recommendation.endMs)}</small>}
                 </div>
                 {hasRange && (

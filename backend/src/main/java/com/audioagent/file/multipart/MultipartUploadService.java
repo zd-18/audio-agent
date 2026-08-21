@@ -82,6 +82,7 @@ public class MultipartUploadService {
             return MultipartUploadInitVO.builder()
                     .status(MultipartUploadStatus.COMPLETED.name())
                     .instantUpload(true)
+                    .resumed(false)
                     .chunkSize(init.chunkSize())
                     .totalChunks(init.totalChunks())
                     .uploadedChunks(List.of())
@@ -89,15 +90,47 @@ public class MultipartUploadService {
                     .build();
         }
 
-        String uploadId = generateUploadId(userId, init);
-        var existing = stateStore.find(uploadId);
-        if (existing.isPresent()) {
-            MultipartUploadState state = existing.get();
-            requireOwner(state, userId);
-            ensureSameUpload(state, init);
-            return initResponse(state, false, null);
+        String fingerprint = resumeFingerprint(userId, init);
+        var indexedUploadId = stateStore.findResumeUploadId(fingerprint);
+        if (indexedUploadId.isPresent()) {
+            var indexedState = stateStore.find(indexedUploadId.get());
+            if (indexedState.isPresent()
+                    && isResumable(indexedState.get())) {
+                MultipartUploadState state = indexedState.get();
+                requireOwner(state, userId);
+                ensureSameFile(state, init);
+                stateStore.bindResumeSession(state, fingerprint);
+                return initResponse(state, false, true, null);
+            }
+            stateStore.removeResumeSession(fingerprint,
+                    indexedUploadId.get());
         }
 
+        for (String legacyUploadId : legacyUploadIds(userId, init)) {
+            var legacyState = stateStore.find(legacyUploadId);
+            if (legacyState.isPresent() && isResumable(legacyState.get())) {
+                MultipartUploadState state = legacyState.get();
+                requireOwner(state, userId);
+                ensureSameFile(state, init);
+                stateStore.bindResumeSession(state, fingerprint);
+                return initResponse(state, false, true, null);
+            }
+        }
+
+        String uploadId = resumeUploadId(fingerprint);
+        var unindexedState = stateStore.find(uploadId);
+        if (unindexedState.isPresent()
+                && isResumable(unindexedState.get())) {
+            MultipartUploadState state = unindexedState.get();
+            requireOwner(state, userId);
+            ensureSameFile(state, init);
+            stateStore.bindResumeSession(state, fingerprint);
+            return initResponse(state, false, true, null);
+        }
+        if (unindexedState.isPresent()) {
+            // A retained COMPLETED state must never be revived or overwritten.
+            uploadId = UUID.randomUUID().toString().replace("-", "");
+        }
         long now = System.currentTimeMillis();
         MultipartUploadState state = MultipartUploadState.builder()
                 .uploadId(uploadId)
@@ -107,6 +140,7 @@ public class MultipartUploadService {
                 .mimeType(init.mimeType())
                 .sizeBytes(init.sizeBytes())
                 .sha256(init.sha256())
+                .resumeFingerprint(fingerprint)
                 .chunkSize(init.chunkSize())
                 .totalChunks(init.totalChunks())
                 .finalObjectKey(generateFinalObjectKey(userId,
@@ -116,7 +150,7 @@ public class MultipartUploadService {
                 .updatedAt(now)
                 .build();
         stateStore.create(state);
-        return initResponse(state, false, null);
+        return initResponse(state, false, false, null);
     }
 
     public MultipartUploadProgressVO progress(Long userId, String uploadId) {
@@ -172,6 +206,7 @@ public class MultipartUploadService {
 
     public MultipartUploadCompleteVO complete(Long userId, String uploadId) {
         MultipartUploadState state = requireOwnedState(userId, uploadId);
+        ensureResumeFingerprint(state);
         AudioFile duplicate = findDuplicate(userId, state.getSha256());
         if (duplicate != null) {
             completionPersistenceService.ensureUploadedEvent(duplicate);
@@ -205,6 +240,7 @@ public class MultipartUploadService {
         boolean published = false;
         try {
             state = requireOwnedState(userId, uploadId);
+            ensureResumeFingerprint(state);
             duplicate = findDuplicate(userId, state.getSha256());
             if (duplicate != null) {
                 completionPersistenceService.ensureUploadedEvent(duplicate);
@@ -485,11 +521,13 @@ public class MultipartUploadService {
 
     private MultipartUploadInitVO initResponse(MultipartUploadState state,
                                                 boolean instant,
+                                                boolean resumed,
                                                 AudioFile audioFile) {
         return MultipartUploadInitVO.builder()
                 .uploadId(state.getUploadId())
                 .status(state.getStatus().name())
                 .instantUpload(instant)
+                .resumed(resumed)
                 .chunkSize(state.getChunkSize())
                 .totalChunks(state.getTotalChunks())
                 .uploadedChunks(stateStore.uploadedChunks(state.getUploadId()))
@@ -556,6 +594,14 @@ public class MultipartUploadService {
             log.error("Database completion committed but Redis state update failed, "
                             + "uploadId={}, audioFileId={}",
                     state.getUploadId(), audioFileId, e);
+        } finally {
+            try {
+                stateStore.removeResumeSession(state.getResumeFingerprint(),
+                        state.getUploadId());
+            } catch (RuntimeException e) {
+                log.error("Failed to remove multipart resume index, uploadId={}",
+                        state.getUploadId(), e);
+            }
         }
     }
 
@@ -591,19 +637,72 @@ public class MultipartUploadService {
                 + objectName + "." + extension;
     }
 
-    private String generateUploadId(Long userId, ValidatedInit init) {
+    private String legacyUploadId(Long userId, ValidatedInit init,
+                                  String mimeType) {
         String identity = userId + ":" + init.sha256() + ":"
                 + init.sizeBytes() + ":" + init.originalName() + ":"
-                + init.mimeType() + ":" + init.chunkSize() + ":"
+                + mimeType + ":" + init.chunkSize() + ":"
                 + init.totalChunks();
         return UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8))
                 .toString().replace("-", "");
     }
 
-    private void ensureSameUpload(MultipartUploadState state,
-                                  ValidatedInit init) {
+    private Set<String> legacyUploadIds(Long userId, ValidatedInit init) {
+        Set<String> mimeTypes = switch (init.extension()) {
+            case "wav" -> Set.of("audio/wav", "audio/x-wav", "audio/wave",
+                    "audio/vnd.wave", "application/octet-stream");
+            case "mp3" -> Set.of("audio/mpeg", "audio/mp3",
+                    "application/octet-stream");
+            case "m4a" -> Set.of("audio/mp4", "audio/x-m4a", "audio/m4a",
+                    "application/mp4", "application/octet-stream");
+            case "mp4" -> Set.of("audio/mp4", "video/mp4",
+                    "application/mp4", "application/octet-stream");
+            default -> Set.of(init.mimeType());
+        };
+        return mimeTypes.stream()
+                .map(mime -> legacyUploadId(userId, init, mime))
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private String resumeFingerprint(Long userId, ValidatedInit init) {
+        String identity = userId + ":" + init.sha256() + ":"
+                + init.sizeBytes() + ":" + init.originalName() + ":"
+                + init.chunkSize() + ":" + init.totalChunks();
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(identity.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
+    }
+
+    private String resumeUploadId(String fingerprint) {
+        return UUID.nameUUIDFromBytes(("resume:" + fingerprint)
+                        .getBytes(StandardCharsets.UTF_8))
+                .toString().replace("-", "");
+    }
+
+    private String resumeFingerprint(MultipartUploadState state) {
+        return resumeFingerprint(state.getUserId(), new ValidatedInit(
+                state.getOriginalName(), state.getExtension(),
+                state.getMimeType(), state.getSizeBytes(), state.getSha256(),
+                state.getChunkSize(), state.getTotalChunks()));
+    }
+
+    private void ensureResumeFingerprint(MultipartUploadState state) {
+        if (state.getResumeFingerprint() == null
+                || state.getResumeFingerprint().isBlank()) {
+            state.setResumeFingerprint(resumeFingerprint(state));
+        }
+    }
+
+    private boolean isResumable(MultipartUploadState state) {
+        return state.getStatus() != MultipartUploadStatus.COMPLETED;
+    }
+
+    private void ensureSameFile(MultipartUploadState state,
+                                ValidatedInit init) {
         if (!state.getOriginalName().equals(init.originalName())
-                || !state.getMimeType().equals(init.mimeType())
                 || !state.getSizeBytes().equals(init.sizeBytes())
                 || !state.getSha256().equals(init.sha256())
                 || !state.getChunkSize().equals(init.chunkSize())

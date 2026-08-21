@@ -157,7 +157,7 @@ export default function ProcessingExecutionEntry({
         <p>
           {state.execution
             ? '可以继续查看整体进度、当前阶段和每个处理步骤。'
-            : '系统将根据已确认步骤创建新的修复结果，不会覆盖原始音频。'}
+            : '系统将根据已确认步骤创建新的处理结果，不会覆盖原始音频。'}
         </p>
       </div>
       <div className="processing-execution-entry__actions">

@@ -52,6 +52,28 @@ class ReportBuildersTest {
         assertEquals("HIGH", recommendations.get(0).getPriority());
         assertEquals(2L, recommendations.get(0).getIssueId());
         assertEquals("MEDIUM", recommendations.get(1).getPriority());
+        assertEquals("裁剪静音片段",
+                recommendations.get(0).getRecommendedMethod());
+        assertEquals("轻度降噪",
+                recommendations.get(1).getRecommendedMethod());
+        assertTrue(recommendations.get(1).getRecommendedParameters()
+                .contains("MEDIUM"));
+    }
+
+    @Test
+    void loudnessRecommendationShowsCurrentMetricAndTargetParameters() {
+        AudioAnalysisResult result = new AudioAnalysisResult();
+        result.setIntegratedLoudnessLufs(
+                new java.math.BigDecimal("-28.50"));
+
+        Recommendation recommendation = recommendationBuilder
+                .build(result, List.of()).getFirst();
+
+        assertTrue(recommendation.getMessage().contains("当前：-28.5 LUFS"));
+        assertEquals("整段响度标准化",
+                recommendation.getRecommendedMethod());
+        assertTrue(recommendation.getRecommendedParameters()
+                .contains("目标 -16"));
     }
 
     private AudioIssueSegment issue(long id, String type, String severity,

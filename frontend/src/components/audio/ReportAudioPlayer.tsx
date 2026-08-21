@@ -25,6 +25,7 @@ interface ReportAudioPlayerProps {
   onDownload: () => void
   sectionId?: string
   eyebrow?: string
+  compact?: boolean
 }
 
 export default function ReportAudioPlayer({
@@ -34,13 +35,30 @@ export default function ReportAudioPlayer({
   onDownload,
   sectionId = 'report-audio-player',
   eyebrow = 'SOURCE AUDIO',
+  compact = false,
 }: ReportAudioPlayerProps) {
   const fileName = player.playback?.fileName || fallbackFileName || '未命名音频'
   const controlsDisabled = player.loading || player.refreshing || !player.sourceUrl || player.unsupported
   const timeLabel = `${formatDuration(player.currentTimeSeconds * 1000)} / ${formatDuration(player.durationSeconds * 1000)}`
+  const statusText = player.loading
+    ? '正在获取播放地址'
+    : player.refreshing
+      ? '正在刷新播放地址'
+      : player.isWaiting
+        ? '正在缓冲'
+        : player.unsupported
+          ? '音频不可用'
+          : player.error
+            ? '播放失败'
+            : null
 
   return (
-    <section id={sectionId} className="report-audio-player report-reveal-section" aria-labelledby={`${sectionId}-title`}>
+    <section
+      id={sectionId}
+      className={`report-audio-player report-reveal-section${compact ? ' is-compact' : ''}`}
+      aria-label={compact ? `${fileName} 播放器` : undefined}
+      aria-labelledby={compact ? undefined : `${sectionId}-title`}
+    >
       <audio
         ref={player.audioRef}
         src={player.sourceUrl}
@@ -48,31 +66,27 @@ export default function ReportAudioPlayer({
         aria-hidden="true"
       />
 
-      <div className="report-audio-player__header">
-        <div className="report-audio-player__identity">
-          <span className="report-audio-player__signal" aria-hidden="true">
-            <AudioOutlined />
-          </span>
-          <div>
-            <span className="report-section-kicker">{eyebrow}</span>
-            <h2 id={`${sectionId}-title`} title={fileName}>{fileName}</h2>
-          </div>
+      {(!compact || statusText) && (
+        <div className="report-audio-player__header">
+          {!compact && (
+            <div className="report-audio-player__identity">
+              <span className="report-audio-player__signal" aria-hidden="true">
+                <AudioOutlined />
+              </span>
+              <div>
+                <span className="report-section-kicker">{eyebrow}</span>
+                <h2 id={`${sectionId}-title`} title={fileName}>{fileName}</h2>
+              </div>
+            </div>
+          )}
+          {statusText && (
+            <div className="report-audio-player__status" aria-live="polite">
+              {(player.loading || player.refreshing || player.isWaiting) && <LoadingOutlined spin />}
+              <span>{statusText}</span>
+            </div>
+          )}
         </div>
-        <div className="report-audio-player__status" aria-live="polite">
-          {(player.loading || player.refreshing || player.isWaiting) && <LoadingOutlined spin />}
-          <span>
-            {player.loading
-              ? '正在获取播放地址'
-              : player.refreshing
-                ? '正在刷新播放地址'
-                : player.isWaiting
-                  ? '正在缓冲'
-                  : player.error
-                    ? '需要处理'
-                    : player.isPlaying ? '正在播放' : '已就绪'}
-          </span>
-        </div>
-      </div>
+      )}
 
       {player.loading && !player.playback ? (
         <div className="report-audio-player__skeleton" aria-label="正在加载音频播放器">

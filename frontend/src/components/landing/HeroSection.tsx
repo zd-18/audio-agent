@@ -25,7 +25,7 @@ export default function HeroSection() {
             to={isAuthenticated ? '/audio/upload' : '/login'}
             state={isAuthenticated ? undefined : { from: '/audio/upload' }}
           >
-            开始分析音频
+            开始智能诊断
           </AnimatedBorderButton>
           <AnimatedBorderButton href="#analysis-example" variant="secondary">
             查看分析示例

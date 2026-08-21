@@ -4,7 +4,6 @@
   gap: 14px;
   width: 100%;
 }
-.workbench-filter-bar--audio-files { grid-template-columns: minmax(280px, 1.4fr) minmax(190px, .6fr) auto; }
 .workbench-filter-bar--analysis-tasks { grid-template-columns: minmax(160px, 1fr) minmax(230px, 1.35fr) minmax(150px, .9fr) auto; }
 .workbench-filter-bar__field {
   display: grid;
@@ -29,13 +28,76 @@
 .workbench-filter-bar__actions { display: flex; align-items: center; align-self: end; height: 56px; gap: 8px; }
 .workbench-filter-bar__actions .ant-btn { white-space: nowrap; }
 
-.audio-file-filter { margin-bottom: 16px; padding-bottom: 16px; }
+.audio-file-filter {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+}
+.audio-file-filter .workbench-panel__heading { margin-bottom: 12px; }
+.audio-file-filter .workbench-panel__heading h3 { margin-top: 2px; }
+.workbench-filter-bar--audio-files {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.workbench-filter-bar--audio-files .workbench-filter-bar__field {
+  grid-template-rows: 18px 44px;
+  gap: 4px;
+}
+.workbench-filter-bar--audio-files .workbench-filter-bar__field:first-child {
+  flex: 1 1 480px;
+  max-width: 540px;
+}
+.workbench-filter-bar--audio-files .workbench-filter-bar__field:nth-child(2) { flex: 0 0 232px; }
+.workbench-filter-bar--audio-files .ant-input,
+.workbench-filter-bar--audio-files .ant-input-affix-wrapper,
+.workbench-filter-bar--audio-files .ant-select,
+.workbench-filter-bar--audio-files .ant-select-selector,
+.workbench-filter-bar--audio-files .ant-btn {
+  height: 44px !important;
+  min-height: 44px !important;
+}
+.workbench-filter-bar--audio-files .ant-input-affix-wrapper > .ant-input {
+  height: 42px !important;
+  min-height: 0 !important;
+}
+.workbench-filter-bar--audio-files .ant-select-single .ant-select-selector {
+  height: 44px !important;
+  min-height: 44px !important;
+}
+.workbench-filter-bar--audio-files .ant-select-single .ant-select-selector .ant-select-selection-wrap {
+  height: 42px;
+}
+.workbench-filter-bar--audio-files .ant-select-single .ant-select-selector .ant-select-selection-item,
+.workbench-filter-bar--audio-files .ant-select-single .ant-select-selector .ant-select-selection-placeholder {
+  line-height: 42px !important;
+}
+.workbench-filter-bar--audio-files .workbench-filter-bar__actions {
+  flex: 0 0 200px;
+  height: 44px;
+}
+.workbench-filter-bar--audio-files .workbench-filter-bar__actions .ant-btn:first-child { width: 100px; }
+.workbench-filter-bar--audio-files .workbench-filter-bar__actions .ant-btn:last-child { width: 92px; }
 
 .audio-file-list-panel { min-width: 0; }
 .audio-file-list-panel .workbench-panel__heading small { color: var(--workbench-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .audio-file-list-panel .ant-table { background: transparent; }
 .audio-file-list-panel .ant-table-wrapper { min-width: 0; }
 .audio-file-list-panel .ant-table-cell { font-size: 13px; }
+.audio-file-list-panel .ant-table-tbody > .audio-file-list__row > td {
+  height: 68px;
+  padding-block: 12px;
+  transition: background-color 160ms ease;
+}
+.audio-file-list-panel .ant-table-tbody > .audio-file-list__row { cursor: pointer; }
+.audio-file-list-panel .ant-table-tbody > .audio-file-list__row:hover > td,
+.audio-file-list-panel .ant-table-tbody > .audio-file-list__row:focus-visible > td {
+  background: rgba(255, 255, 255, .045) !important;
+}
+.audio-file-list-panel .ant-table-tbody > .audio-file-list__row:focus-visible {
+  outline: 2px solid var(--workbench-accent);
+  outline-offset: -2px;
+}
 .audio-file-list-panel .ant-table-pagination { margin-bottom: 0; }
 .audio-file-list-panel .workbench-empty { min-height: 240px; }
 .audio-file-list-panel .ant-table-cell-fix-right,
@@ -46,33 +108,13 @@
 .audio-file-list-panel .ant-table-thead .ant-table-cell-fix-right-first::after {
   box-shadow: -8px 0 8px rgba(0, 0, 0, 0.5);
 }
-.audio-file-list__name { display: grid; min-width: 0; gap: 5px; }
-.audio-file-list__name strong { overflow: hidden; color: var(--workbench-text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.audio-file-list__id {
-  display: flex;
-  align-items: center;
-  max-width: 100%;
-  min-width: 0;
-  margin: 0 !important;
-  color: var(--workbench-text-muted) !important;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-.audio-file-list__id-value { display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.audio-file-list__id .ant-typography-copy {
-  display: inline-grid;
-  flex: 0 0 28px;
-  place-items: center;
-  width: 28px;
-  min-width: 28px;
-  min-height: 28px;
-  margin-inline-start: 4px;
-  color: var(--workbench-text-muted);
-}
-.audio-file-list__id .ant-typography-copy:hover { color: var(--workbench-accent); }
-.audio-file-list__actions { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; }
-.audio-file-list__actions .ant-btn { min-height: 36px; padding-inline: 6px; }
+.audio-file-list__name { min-width: 0; }
+.audio-file-list__name strong { display: block; overflow: hidden; color: var(--workbench-text); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.audio-file-list__format { color: var(--workbench-text-secondary); font-size: 12px; font-weight: 650; letter-spacing: .04em; }
+.audio-file-list__meta,
+.audio-file-list__time { color: var(--workbench-text-secondary); }
+.audio-file-list__actions { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+.audio-file-list__actions .ant-btn { min-width: 76px; min-height: 40px; padding-inline: 10px; }
 .audio-file-list__actions .ant-btn .anticon { font-size: 12px; }
 .audio-file-list__menu-button { display: block; min-width: 0; }
 .audio-file-list__menu-button .ant-btn {
@@ -289,6 +331,18 @@
   .workbench-filter-bar--audio-files,
   .workbench-filter-bar--analysis-tasks { grid-template-columns: 1fr; }
   .workbench-filter-bar__actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .workbench-filter-bar--audio-files .workbench-filter-bar__field:first-child,
+  .workbench-filter-bar--audio-files .workbench-filter-bar__field:nth-child(2) {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+  .workbench-filter-bar--audio-files .workbench-filter-bar__actions {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  .workbench-filter-bar--audio-files .workbench-filter-bar__actions .ant-btn:first-child,
+  .workbench-filter-bar--audio-files .workbench-filter-bar__actions .ant-btn:last-child { width: 100%; }
   .audio-file-list-panel { padding: 16px 12px; }
   .audio-file-list-panel .workbench-panel__heading { align-items: flex-start; flex-direction: column; }
   .audio-file-list-panel .ant-pagination { justify-content: flex-start; }

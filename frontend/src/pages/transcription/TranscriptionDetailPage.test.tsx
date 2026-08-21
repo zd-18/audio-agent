@@ -24,6 +24,8 @@ vi.mock('../../components/audio/ReportAudioPlayer', () => ({
 vi.mock('../../components/content-analysis/ContentAnalysisSection', () => ({
   default: ({ onLocateSegment }: { onLocateSegment: (segmentOrder: number) => void }) => (
     <div aria-label="智能分析测试入口">
+      <strong>尚未生成智能分析</strong>
+      <button type="button">生成智能分析</button>
       <button type="button" onClick={() => onLocateSegment(2)}>定位原文到 #2</button>
       <button type="button" onClick={() => onLocateSegment(99)}>定位缺失片段</button>
     </div>
@@ -164,10 +166,39 @@ describe('TranscriptionDetailPage', () => {
     playbackMock.mockReturnValue(player())
   })
 
-  it('shows the compact view by default and combines adjacent segments', () => {
+  it('shows compact file information without a successful progress bar', () => {
     renderPage()
 
-    expect(screen.getByText(transcript.fullText)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'meeting.wav' })).toBeInTheDocument()
+    expect(screen.getByLabelText('文件基本信息')).toHaveTextContent('已转写·00:05·中文·')
+    expect(screen.queryByText('任务概览')).not.toBeInTheDocument()
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
+    expect(screen.queryByText('中文（zh）')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('源音频播放器')).toBeInTheDocument()
+  })
+
+  it('organizes transcript content into three tabs with the full transcript selected', async () => {
+    renderPage()
+
+    expect(screen.getByRole('tab', { name: '完整文字稿' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: '时间片段' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('tab', { name: '智能分析' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByRole('heading', { name: '完整文字稿' })).not.toBeInTheDocument()
+    expect(screen.getByText(transcript.fullText)).toBeVisible()
+
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
+    expect(screen.queryByRole('heading', { name: '时间片段' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: '智能分析' }))
+    expect(screen.queryByRole('heading', { name: '智能分析' })).not.toBeInTheDocument()
+    expect(screen.getByText('尚未生成智能分析')).toBeVisible()
+    expect(screen.getByRole('button', { name: '生成智能分析' })).toBeVisible()
+  })
+
+  it('shows the compact segment view by default and combines adjacent segments', async () => {
+    renderPage()
+
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
     expect(screen.getByRole('button', { name: '简洁视图' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: '逐句视图' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('第一段真实转写 第二段真实转写')).toBeInTheDocument()
@@ -188,6 +219,7 @@ describe('TranscriptionDetailPage', () => {
   it('switches to the existing sentence view and preserves the active segment', async () => {
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
     await userEvent.click(screen.getByRole('button', { name: '逐句视图' }))
 
     expect(screen.getByRole('button', { name: '逐句视图' })).toHaveAttribute('aria-pressed', 'true')
@@ -201,6 +233,7 @@ describe('TranscriptionDetailPage', () => {
   it('seeks and starts playback from the paragraph range', async () => {
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
     await userEvent.click(screen.getByRole('button', { name: /播放段落 1/ }))
 
     expect(seekTo).toHaveBeenCalledWith(1, { play: true, endSeconds: 5 })
@@ -209,6 +242,7 @@ describe('TranscriptionDetailPage', () => {
   it('expands and collapses original segment details', async () => {
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
     await userEvent.click(screen.getByRole('button', { name: /展开明细/ }))
 
     expect(screen.getByRole('button', { name: /#1.*第一段真实转写/ })).toBeInTheDocument()
@@ -222,6 +256,7 @@ describe('TranscriptionDetailPage', () => {
   it('seeks and starts playback when an original segment detail is clicked', async () => {
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
     await userEvent.click(screen.getByRole('button', { name: /展开明细/ }))
     await userEvent.click(screen.getByRole('button', { name: /#2.*第二段真实转写/ }))
 
@@ -231,6 +266,7 @@ describe('TranscriptionDetailPage', () => {
   it('seeks and starts playback when a sentence-view segment is clicked', async () => {
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
     await userEvent.click(screen.getByRole('button', { name: '逐句视图' }))
     await userEvent.click(screen.getByRole('button', { name: /第一段真实转写/ }))
 
@@ -240,17 +276,20 @@ describe('TranscriptionDetailPage', () => {
   it('expands, scrolls to, and highlights the exact segment located by analysis', async () => {
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '智能分析' }))
     await userEvent.click(screen.getByRole('button', { name: '定位原文到 #2' }))
 
+    expect(screen.getByRole('tab', { name: '时间片段' })).toHaveAttribute('aria-selected', 'true')
     const target = await screen.findByRole('button', { name: /#2.*第二段真实转写/ })
     expect(target).toHaveAttribute('aria-current', 'true')
-    expect(target).toHaveFocus()
+    await waitFor(() => expect(target).toHaveFocus())
     expect(seekTo).toHaveBeenCalledWith(3)
   })
 
   it('keeps the located segment highlighted when switching views', async () => {
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '智能分析' }))
     await userEvent.click(screen.getByRole('button', { name: '定位原文到 #2' }))
     await userEvent.click(screen.getByRole('button', { name: '逐句视图' }))
 
@@ -259,7 +298,7 @@ describe('TranscriptionDetailPage', () => {
     expect(seekTo).toHaveBeenCalledTimes(1)
   })
 
-  it('renders 18 segments as five compact paragraphs instead of 18 large cards', () => {
+  it('renders 18 segments as five compact paragraphs instead of 18 large cards', async () => {
     const manySegments = Array.from({ length: 18 }, (_, index): TranscriptSegment => ({
       segmentId: `segment-${index + 1}`,
       order: index + 1,
@@ -283,6 +322,7 @@ describe('TranscriptionDetailPage', () => {
 
     renderPage()
 
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
     expect(document.querySelectorAll('.transcript-paragraph')).toHaveLength(5)
     expect(document.querySelectorAll('.transcript-segment')).toHaveLength(0)
   })
@@ -309,7 +349,7 @@ describe('TranscriptionDetailPage', () => {
     expect(transcriptRefresh).toHaveBeenCalledOnce()
   })
 
-  it('shows friendly empty states for empty transcript content and segments', () => {
+  it('shows friendly empty states for empty transcript content and segments', async () => {
     transcriptMock.mockReturnValue({
       transcript: {
         ...transcript,
@@ -324,8 +364,9 @@ describe('TranscriptionDetailPage', () => {
     renderPage()
 
     expect(screen.getByText('暂无完整文字稿内容')).toBeInTheDocument()
-    expect(screen.getByText('暂无文字片段')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /复制全文/ })).toBeDisabled()
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
+    expect(screen.getByText('暂无文字片段')).toBeInTheDocument()
   })
 
   it('shows a friendly failure and creates a new task on retry', async () => {

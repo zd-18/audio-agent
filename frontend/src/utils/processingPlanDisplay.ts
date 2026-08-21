@@ -1,3 +1,4 @@
+import { ApiError } from '../api/http'
 import type {
   ProcessingOperationType,
   ProcessingPlanStatus,
@@ -6,6 +7,28 @@ import type {
   ProcessingStep,
   ProcessingStepParameters,
 } from '../types/processingPlan'
+
+const PLAN_ERROR_MESSAGES: Record<number, string> = {
+  40101: '未找到对应的诊断任务。',
+  40209: '当前任务还没有处理方案。',
+  40210: '诊断结果尚未准备完成，暂时无法生成处理方案。',
+  40212: '当前诊断数据不完整，暂时无法生成处理方案。',
+  40915: '暂时无法获取当前音频的处理信息，请返回上一页重新进入后重试。',
+}
+
+function isChineseMessage(value: string) {
+  return /[\u3400-\u9fff]/.test(value)
+}
+
+export function getProcessingPlanErrorMessage(
+  error: unknown,
+  fallback = '处理方案操作失败，请稍后重试。',
+) {
+  if (error instanceof ApiError && error.code && PLAN_ERROR_MESSAGES[error.code]) {
+    return PLAN_ERROR_MESSAGES[error.code]
+  }
+  return error instanceof Error && isChineseMessage(error.message) ? error.message : fallback
+}
 
 const OPERATION_LABELS: Record<ProcessingOperationType, string> = {
   NORMALIZE_VOLUME: '整段音量标准化',
@@ -19,6 +42,20 @@ const OPERATION_LABELS: Record<ProcessingOperationType, string> = {
   DENOISE_REVIEW: '检查疑似背景噪声',
   NORMALIZE_LOUDNESS: '统一整体响度',
   LIMIT_PEAK: '控制过高峰值',
+}
+
+const PROCESSING_TYPE_LABELS: Record<ProcessingOperationType, string> = {
+  NORMALIZE_VOLUME: '音量标准化',
+  TRIM_SEGMENT: '片段裁剪',
+  DENOISE: '降低噪声',
+  SILENCE_CLEANUP: '优化静音',
+  REVIEW_SILENCE: '优化静音',
+  TRIM_SILENCE: '优化静音',
+  INCREASE_GAIN: '提升音量',
+  DECREASE_GAIN: '降低过高音量',
+  DENOISE_REVIEW: '降低噪声',
+  NORMALIZE_LOUDNESS: '响度均衡',
+  LIMIT_PEAK: '控制声音峰值',
 }
 
 const PLAN_STATUS_LABELS: Record<ProcessingPlanStatus, string> = {
@@ -74,6 +111,41 @@ export function getOperationLabel(
     if (mode === 'COMPRESS') return '压缩长静音'
   }
   return OPERATION_LABELS[operationType] || fallback || '音频处理建议'
+}
+
+export function getProcessingTypeLabel(operationType: ProcessingOperationType) {
+  return PROCESSING_TYPE_LABELS[operationType] || '音频优化'
+}
+
+export function getProcessingPurpose(step: ProcessingStep) {
+  switch (step.operationType) {
+    case 'NORMALIZE_VOLUME':
+      return '让整段音频的音量保持稳定。'
+    case 'TRIM_SEGMENT':
+      return '移除不需要的音频片段。'
+    case 'DENOISE':
+      return '减弱背景噪声，让人声更清晰。'
+    case 'SILENCE_CLEANUP':
+      return step.parameters.mode === 'REMOVE'
+        ? '删除过长静音，让内容更紧凑。'
+        : '缩短过长静音，让节奏更自然。'
+    case 'REVIEW_SILENCE':
+      return '检查较长静音，确认是否需要缩短。'
+    case 'TRIM_SILENCE':
+      return '缩短过长静音，让内容更紧凑。'
+    case 'INCREASE_GAIN':
+      return '提升偏低音量，让内容更容易听清。'
+    case 'DECREASE_GAIN':
+      return '降低突发高音量，避免听感跳变。'
+    case 'DENOISE_REVIEW':
+      return '检查疑似噪声片段，确认是否需要降噪。'
+    case 'NORMALIZE_LOUDNESS':
+      return '让整体响度更均衡，听感更一致。'
+    case 'LIMIT_PEAK':
+      return '限制过高峰值，减少失真和爆音风险。'
+    default:
+      return '按系统建议优化当前音频。'
+  }
 }
 
 export function getPlanStatusLabel(status: ProcessingPlanStatus) {

@@ -76,6 +76,7 @@ const BUSINESS_ERROR_MESSAGES: Record<number, string> = {
   40230: '生成的音频结果不可用。',
   40231: '处理结果保存失败。',
   40232: '音频处理失败，请稍后重试。',
+  40915: '暂时无法获取当前音频的处理信息，请返回上一页重新进入后重试。',
 }
 
 const FAILURE_MESSAGES: Record<string, string> = {
@@ -112,7 +113,9 @@ export function getProcessingExecutionErrorMessage(error: unknown) {
   if (error instanceof ApiError && error.code) {
     return BUSINESS_ERROR_MESSAGES[error.code] || '请求失败，请稍后重试。'
   }
-  return error instanceof Error ? error.message : '请求失败，请稍后重试。'
+  return error instanceof Error && /[\u3400-\u9fff]/.test(error.message)
+    ? error.message
+    : '请求失败，请稍后重试。'
 }
 
 export function isActiveExecutionStatus(status: ProcessingExecutionStatus) {

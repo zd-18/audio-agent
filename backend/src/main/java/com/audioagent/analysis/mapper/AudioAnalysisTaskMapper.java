@@ -24,6 +24,18 @@ public interface AudioAnalysisTaskMapper extends BaseMapper<AudioAnalysisTask> {
             @Param("audioFileId") Long audioFileId);
 
     @Select("""
+            SELECT t.*
+            FROM audio_analysis_task t
+            WHERE t.audio_file_id = #{audioFileId}
+              AND t.analysis_type = 'PROCESSING_CONTEXT'
+              AND t.status = 'SUCCESS'
+            ORDER BY t.created_at DESC, t.id DESC
+            LIMIT 1
+            """)
+    AudioAnalysisTask selectProcessingContextByAudioFileId(
+            @Param("audioFileId") Long audioFileId);
+
+    @Select("""
             SELECT *
             FROM audio_analysis_task
             WHERE source_event_id = #{sourceEventId}
@@ -50,7 +62,7 @@ public interface AudioAnalysisTaskMapper extends BaseMapper<AudioAnalysisTask> {
             FROM audio_analysis_task t
             LEFT JOIN audio_file f
               ON f.id = t.audio_file_id AND f.deleted = 0
-            WHERE 1 = 1
+            WHERE t.analysis_type != 'PROCESSING_CONTEXT'
               AND f.user_id = #{userId}
             <if test="status != null">
               AND t.status = #{status}

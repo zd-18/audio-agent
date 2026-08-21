@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { ApiError } from '../api/http'
 import type { ProcessingStepConfirmation } from '../types/processingConfirmation'
 import type { ProcessingStep } from '../types/processingPlan'
 import {
   getOperationLabel,
   getParameterDisplayItems,
+  getProcessingPlanErrorMessage,
   isExecutableProcessingOperation,
   isWholeAudioOperation,
 } from './processingPlanDisplay'
@@ -59,6 +61,17 @@ describe('DENOISE display', () => {
 
   it('labels the denoising execution stage', () => {
     expect(getStageLabel('DENOISING')).toBe('正在处理音频')
+  })
+})
+
+describe('processing plan error display', () => {
+  it('translates an unavailable processing context without exposing backend English', () => {
+    const message = getProcessingPlanErrorMessage(
+      new ApiError('Audio processing context is unavailable', 40915),
+    )
+
+    expect(message).toBe('暂时无法获取当前音频的处理信息，请返回上一页重新进入后重试。')
+    expect(message).not.toContain('Audio processing context')
   })
 })
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -60,6 +60,24 @@ describe('UserTasksPage', () => {
           resultPath: null,
           createdAt: '2026-08-13T10:00:00',
           completedAt: null,
+        } satisfies UserTaskProgress, {
+          taskId: '9007199254740994',
+          audioFileId: '9007199254740996',
+          fileName: '已处理录音.wav',
+          status: 'COMPLETED',
+          statusLabel: '已完成',
+          currentStage: 'RESULT_GENERATION',
+          currentStageLabel: '结果生成',
+          progressPercent: 100,
+          currentActivity: '处理结果已生成',
+          requiresUserAction: false,
+          failureReason: null,
+          stages,
+          nextActions: [],
+          completedOperations: ['智能诊断', '音频处理'],
+          resultPath: '/analysis/tasks/9007199254740994/report',
+          createdAt: '2026-08-12T10:00:00',
+          completedAt: '2026-08-12T10:30:00',
         } satisfies UserTaskProgress],
         current: 1,
         size: 100,
@@ -76,7 +94,20 @@ describe('UserTasksPage', () => {
   it('shows a productized failure and retries without opening technical details', async () => {
     render(<MemoryRouter><UserTasksPage /></MemoryRouter>)
 
-    expect(screen.getByRole('heading', { name: '任务进度' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '任务进度' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '当前任务' })).toBeInTheDocument()
+    const stepper = screen.getByRole('list', { name: '任务处理步骤' })
+    expect(stepper).toHaveTextContent('文件上传音频解析智能诊断处理方案用户确认音频处理结果生成')
+    expect(within(stepper).queryByText('语音转写')).not.toBeInTheDocument()
+    expect(screen.queryByText('文件上传完成')).not.toBeInTheDocument()
+    expect(screen.queryByText('尚未开始')).not.toBeInTheDocument()
+    expect(within(stepper).getByText('音频解析').closest('li')).toHaveAttribute('aria-current', 'step')
+    const resultButton = screen.getByRole('button', { name: /查看结果/ })
+    expect(resultButton).toHaveClass('user-task-history-card__result-button', 'ant-btn-primary')
+    expect(resultButton).not.toBeDisabled()
+    expect(resultButton).not.toHaveAttribute('aria-disabled', 'true')
+    const resultText = resultButton.querySelector('span:not(.anticon)') as HTMLElement
+    expect(resultText).toHaveTextContent('查看结果')
     expect(screen.getAllByText('文件解析失败，请确认音频文件是否完整。').length).toBeGreaterThan(0)
     await userEvent.click(screen.getByRole('button', { name: /重新分析/ }))
     expect(retryAnalysisTask).toHaveBeenCalledWith('9007199254740993')

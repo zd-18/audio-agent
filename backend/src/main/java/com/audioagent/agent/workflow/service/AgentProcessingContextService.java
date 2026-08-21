@@ -6,6 +6,8 @@ import com.audioagent.agent.entity.AgentConversation;
 import com.audioagent.agent.exception.AgentExecutionException;
 import com.audioagent.agent.workflow.model.AgentProcessingContext;
 import com.audioagent.analysis.entity.AudioAnalysisTask;
+import com.audioagent.analysis.enums.AnalysisTaskStatus;
+import com.audioagent.analysis.enums.AnalysisType;
 import com.audioagent.analysis.mapper.AudioAnalysisTaskMapper;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.file.entity.AudioFile;
@@ -13,10 +15,15 @@ import com.audioagent.file.mapper.AudioFileMapper;
 import com.audioagent.transcription.entity.AudioTranscript;
 import com.audioagent.transcription.mapper.AudioTranscriptMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AgentProcessingContextService {
 
     private final AudioTranscriptMapper transcriptMapper;
@@ -24,6 +31,7 @@ public class AgentProcessingContextService {
     private final AudioAnalysisTaskMapper analysisTaskMapper;
     private final TranscriptChatContextService transcriptContextService;
 
+    @Transactional(rollbackFor = Exception.class)
     public AgentProcessingContext build(Long userId,
                                         AgentConversation conversation,
                                         String requirement) {
@@ -54,15 +62,49 @@ public class AgentProcessingContextService {
                 || file.getDurationMs() == null || file.getDurationMs() <= 0) {
             throw unavailable("The source audio metadata is unavailable");
         }
-        AudioAnalysisTask task = analysisTaskMapper
-                .selectLatestSuccessfulByAudioFileId(file.getId());
-        if (task == null) {
-            throw unavailable("A completed audio analysis is required before planning");
-        }
+        AudioAnalysisTask task = resolvePlanSource(file);
         return new AgentProcessingContext(task.getId(), file.getId(),
                 file.getOriginalName(), file.getDurationMs(),
                 file.getSampleRate(), file.getChannels(),
                 transcriptContent);
+    }
+
+    /**
+     * ProcessingPlan currently uses a task id as its aggregate key. A
+     * completed diagnosis task can remain that key, but PROCESSING must not
+     * require diagnosis to exist. In that case create an internal successful
+     * anchor which is rooted in the already ownership-checked AudioFile and
+     * is never dispatched to the diagnosis pipeline.
+     */
+    private AudioAnalysisTask resolvePlanSource(AudioFile file) {
+        AudioAnalysisTask task = analysisTaskMapper
+                .selectLatestSuccessfulByAudioFileId(file.getId());
+        if (task != null) {
+            return task;
+        }
+        task = analysisTaskMapper.selectProcessingContextByAudioFileId(
+                file.getId());
+        if (task != null) {
+            return task;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        task = new AudioAnalysisTask();
+        task.setAudioFileId(file.getId());
+        task.setAnalysisType(AnalysisType.PROCESSING_CONTEXT);
+        task.setStatus(AnalysisTaskStatus.SUCCESS);
+        task.setProgress(100);
+        task.setRetryCount(0);
+        task.setMaxRetryCount(0);
+        task.setCreatedAt(now);
+        task.setUpdatedAt(now);
+        task.setStartedAt(now);
+        task.setFinishedAt(now);
+        if (analysisTaskMapper.insert(task) != 1 || task.getId() == null) {
+            throw unavailable("The processing plan source could not be created");
+        }
+        log.info("Agent processing context anchor created, taskId={}, audioFileId={}",
+                task.getId(), file.getId());
+        return task;
     }
 
     private AgentExecutionException unavailable(String message) {

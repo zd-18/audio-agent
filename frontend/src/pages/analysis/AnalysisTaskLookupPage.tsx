@@ -362,7 +362,6 @@ export default function AnalysisTaskLookupPage() {
       <PageTitle
         eyebrow="ANALYSIS TASKS"
         title="分析任务"
-        description="查询真实分析任务、跟踪执行进度，并处理失败任务。"
         actions={<Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>从上传开始</Button></Link>}
       />
 

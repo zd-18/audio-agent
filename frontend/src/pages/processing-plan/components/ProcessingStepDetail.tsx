@@ -1,21 +1,17 @@
 import {
   AimOutlined,
   ArrowRightOutlined,
-  CheckCircleOutlined,
   ClockCircleOutlined,
   PlayCircleOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import { Alert, Button } from 'antd'
 import { Link } from 'react-router-dom'
-import type {
-  ProcessingStepConfirmation,
-  UpdateProcessingStepConfirmationPayload,
-} from '../../../types/processingConfirmation'
 import type { ProcessingStep } from '../../../types/processingPlan'
 import { formatDuration, formatTimestamp } from '../../../utils/audioTime'
 import {
-  getOperationLabel,
+  getProcessingPurpose,
+  getProcessingTypeLabel,
   getPriorityLabel,
   getRiskLabel,
   getStepDurationMs,
@@ -23,34 +19,19 @@ import {
   isWholeAudioOperation,
 } from '../../../utils/processingPlanDisplay'
 import StepParameters from './StepParameters'
-import StepDecisionEditor from './StepDecisionEditor'
 
 interface ProcessingStepDetailProps {
   taskId: string
   step: ProcessingStep
-  confirmationStep?: ProcessingStepConfirmation
-  confirmationReadOnly?: boolean
-  confirmationSaving?: boolean
-  listened?: boolean
   onLocate: (step: ProcessingStep) => void
   onPreview: (step: ProcessingStep) => void
-  onDirtyChange?: (dirty: boolean) => void
-  onSaveConfirmationStep?: (
-    payload: UpdateProcessingStepConfirmationPayload,
-  ) => Promise<ProcessingStepConfirmation | null>
 }
 
 export default function ProcessingStepDetail({
   taskId,
   step,
-  confirmationStep,
-  confirmationReadOnly = false,
-  confirmationSaving = false,
-  listened = false,
   onLocate,
   onPreview,
-  onDirtyChange,
-  onSaveConfirmationStep,
 }: ProcessingStepDetailProps) {
   const segment = hasSegmentRange(step)
   const wholeAudio = isWholeAudioOperation(step.operationType)
@@ -61,8 +42,8 @@ export default function ProcessingStepDetail({
       <header className="processing-step-detail__header">
         <div>
           <span className="processing-step-detail__eyebrow">步骤 {String(step.stepOrder).padStart(2, '0')}</span>
-          <h2 id={`processing-step-${step.stepId}`}>{getOperationLabel(step.operationType, step.title, step)}</h2>
-          <p>{step.description || '当前步骤未提供额外说明。'}</p>
+          <h2 id={`processing-step-${step.stepId}`}>{getProcessingTypeLabel(step.operationType)}</h2>
+          <p>{getProcessingPurpose(step)}</p>
         </div>
         <div className="processing-step-detail__labels">
           <span className={`processing-priority processing-priority--${step.priority.toLowerCase()}`}>
@@ -110,22 +91,15 @@ export default function ProcessingStepDetail({
         </section>
       </div>
 
-      {step.requiresConfirmation && (
-        <div className="processing-step-detail__confirmation">
-          <CheckCircleOutlined aria-hidden="true" />
-          <div><strong>需要试听确认</strong><span>请在执行任何修改前对比原始片段，确认建议符合预期。</span></div>
-        </div>
-      )}
-
       <footer className="processing-step-detail__actions">
         {segment && (
           <>
             <Button icon={<AimOutlined />} onClick={() => onLocate(step)}>定位到此处</Button>
-            <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => onPreview(step)}>试听此片段</Button>
+            <Button icon={<PlayCircleOutlined />} onClick={() => onPreview(step)}>试听此片段</Button>
           </>
         )}
         {wholeAudio && (
-          <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => onPreview(step)}>
+          <Button icon={<PlayCircleOutlined />} onClick={() => onPreview(step)}>
             试听整段音频
           </Button>
         )}
@@ -135,17 +109,6 @@ export default function ProcessingStepDetail({
           </Link>
         )}
       </footer>
-
-      {confirmationStep && onSaveConfirmationStep && onDirtyChange && (
-        <StepDecisionEditor
-          step={confirmationStep}
-          readOnly={confirmationReadOnly}
-          saving={confirmationSaving}
-          listened={listened}
-          onDirtyChange={onDirtyChange}
-          onSave={onSaveConfirmationStep}
-        />
-      )}
     </article>
   )
 }

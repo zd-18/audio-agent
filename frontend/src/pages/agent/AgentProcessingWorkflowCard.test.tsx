@@ -52,8 +52,6 @@ function renderCard(workflow: AgentProcessingWorkflow) {
     >
       <AgentProcessingWorkflowCard
         workflow={workflow}
-        confirming={false}
-        onConfirm={vi.fn()}
       />
       <LocationProbe />
     </MemoryRouter>,
@@ -65,37 +63,27 @@ function renderCard(workflow: AgentProcessingWorkflow) {
 }
 
 describe('AgentProcessingWorkflowCard', () => {
-  it('requires explicit confirmation before processing', () => {
-    const onConfirm = vi.fn()
-    render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AgentProcessingWorkflowCard
-          workflow={workflow('WAITING_CONFIRMATION')}
-          confirming={false}
-          onConfirm={onConfirm}
-        />
-      </MemoryRouter>,
-    )
+  it('routes the Agent plan into the unified confirmation page', () => {
+    const { currentLocation } = renderCard(workflow('WAITING_CONFIRMATION'))
 
     expect(screen.getByText('等待确认')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '确认并开始处理' }))
-    expect(onConfirm).toHaveBeenCalledWith('700')
+    fireEvent.click(screen.getByRole('button', { name: '查看并确认处理方案' }))
+    expect(currentLocation()?.pathname)
+      .toBe('/analysis/tasks/31/processing-plan')
+    expect(currentLocation()?.search)
+      .toBe('?source=processing&audioFileId=21')
   })
 
   it('shows a clear critic failure reason', () => {
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AgentProcessingWorkflowCard
-          workflow={workflow('FAILED')}
-          confirming={false}
-          onConfirm={vi.fn()}
-        />
+        <AgentProcessingWorkflowCard workflow={workflow('FAILED')} />
       </MemoryRouter>,
     )
 
     expect(screen.getByText('本次处理未通过检查')).toBeInTheDocument()
     expect(screen.getByText('处理后的音频时长异常')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '确认并开始处理' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '查看并确认处理方案' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '查看处理结果' })).not.toBeInTheDocument()
   })
 

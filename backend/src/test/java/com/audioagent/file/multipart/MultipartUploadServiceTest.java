@@ -18,10 +18,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -88,7 +90,10 @@ class MultipartUploadServiceTest {
         String sha = hashOf(new byte[]{2});
         MultipartUploadState state = state("abc123", 7L, sha,
                 MultipartUploadStatus.UPLOADING);
-        when(stateStore.find(anyString())).thenReturn(Optional.of(state));
+        when(stateStore.findResumeUploadId(anyString()))
+                .thenReturn(Optional.of(state.getUploadId()));
+        when(stateStore.find(state.getUploadId()))
+                .thenReturn(Optional.of(state));
         when(stateStore.uploadedChunks(state.getUploadId()))
                 .thenReturn(List.of(0));
 
@@ -96,8 +101,108 @@ class MultipartUploadServiceTest {
                 initRequest("meeting.wav", CHUNK_SIZE, sha));
 
         assertFalse(result.isInstantUpload());
+        assertTrue(result.isResumed());
+        assertEquals(state.getUploadId(), result.getUploadId());
         assertEquals(List.of(0), result.getUploadedChunks());
         verify(stateStore, never()).create(any());
+        verify(stateStore, never()).clearUploadedChunks(anyString());
+    }
+
+    @Test
+    void initializeMigratesLegacySessionWhenBrowserMimeChanges() {
+        String sha = hashOf(new byte[]{20});
+        var request = initRequest("meeting.wav", CHUNK_SIZE, sha);
+        request.setMimeType("application/octet-stream");
+        String identity = "7:" + sha + ":" + CHUNK_SIZE
+                + ":meeting.wav:audio/wav:" + CHUNK_SIZE + ":1";
+        String legacyUploadId = UUID.nameUUIDFromBytes(
+                        identity.getBytes(StandardCharsets.UTF_8))
+                .toString().replace("-", "");
+        MultipartUploadState legacy = state(legacyUploadId, 7L, sha,
+                MultipartUploadStatus.UPLOADING);
+        when(stateStore.find(anyString())).thenAnswer(invocation ->
+                legacyUploadId.equals(invocation.getArgument(0))
+                        ? Optional.of(legacy) : Optional.empty());
+        when(stateStore.uploadedChunks(legacyUploadId))
+                .thenReturn(List.of(0));
+
+        var result = service.initialize(7L, request);
+
+        assertTrue(result.isResumed());
+        assertEquals(legacyUploadId, result.getUploadId());
+        assertEquals(List.of(0), result.getUploadedChunks());
+        verify(stateStore).bindResumeSession(eq(legacy), anyString());
+        verify(stateStore, never()).create(any());
+    }
+
+    @Test
+    void initializeDoesNotResumeAnotherUsersSession() {
+        String sha = hashOf(new byte[]{21});
+        var request = initRequest("meeting.wav", CHUNK_SIZE, sha);
+
+        service.initialize(7L, request);
+        service.initialize(8L, request);
+
+        ArgumentCaptor<MultipartUploadState> states =
+                ArgumentCaptor.forClass(MultipartUploadState.class);
+        verify(stateStore, org.mockito.Mockito.times(2))
+                .create(states.capture());
+        assertEquals(7L, states.getAllValues().get(0).getUserId());
+        assertEquals(8L, states.getAllValues().get(1).getUserId());
+        assertFalse(states.getAllValues().get(0).getResumeFingerprint()
+                .equals(states.getAllValues().get(1).getResumeFingerprint()));
+    }
+
+    @Test
+    void initializeDoesNotResumeDifferentFiles() {
+        service.initialize(7L, initRequest("meeting.wav", CHUNK_SIZE,
+                hashOf(new byte[]{22})));
+        service.initialize(7L, initRequest("meeting.wav", CHUNK_SIZE,
+                hashOf(new byte[]{23})));
+
+        ArgumentCaptor<MultipartUploadState> states =
+                ArgumentCaptor.forClass(MultipartUploadState.class);
+        verify(stateStore, org.mockito.Mockito.times(2))
+                .create(states.capture());
+        assertFalse(states.getAllValues().get(0).getResumeFingerprint()
+                .equals(states.getAllValues().get(1).getResumeFingerprint()));
+        assertFalse(states.getAllValues().get(0).getUploadId()
+                .equals(states.getAllValues().get(1).getUploadId()));
+    }
+
+    @Test
+    void initializeDoesNotResumeCompletedSession() {
+        String sha = hashOf(new byte[]{24});
+        MultipartUploadState completed = state("2".repeat(32), 7L, sha,
+                MultipartUploadStatus.COMPLETED);
+        when(stateStore.findResumeUploadId(anyString()))
+                .thenReturn(Optional.of(completed.getUploadId()));
+        when(stateStore.find(completed.getUploadId()))
+                .thenReturn(Optional.of(completed));
+
+        var result = service.initialize(7L,
+                initRequest("meeting.wav", CHUNK_SIZE, sha));
+
+        assertFalse(result.isResumed());
+        assertFalse(completed.getUploadId().equals(result.getUploadId()));
+        verify(stateStore).removeResumeSession(anyString(),
+                eq(completed.getUploadId()));
+        verify(stateStore).create(any());
+    }
+
+    @Test
+    void initializeCreatesNewSessionWhenResumeIndexIsExpired() {
+        when(stateStore.findResumeUploadId(anyString()))
+                .thenReturn(Optional.of("3".repeat(32)));
+        when(stateStore.find("3".repeat(32))).thenReturn(Optional.empty());
+
+        var result = service.initialize(7L, initRequest("meeting.wav",
+                CHUNK_SIZE, hashOf(new byte[]{25})));
+
+        assertFalse(result.isResumed());
+        verify(stateStore).removeResumeSession(anyString(),
+                eq("3".repeat(32)));
+        verify(stateStore).create(any());
     }
 
     @Test
@@ -199,6 +304,8 @@ class MultipartUploadServiceTest {
         assertEquals("原始版本", persisted.getVersionSummary());
         assertEquals(null, persisted.getSourceFileId());
         verify(stateStore).markCompleted(state, persisted.getId());
+        verify(stateStore).removeResumeSession(anyString(),
+                eq(state.getUploadId()));
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.audioagent.agent.workflow.model.AgentProcessingContext;
 import com.audioagent.agent.workflow.model.AgentWorkflowStatus;
 import com.audioagent.agent.workflow.planner.AgentProcessingPlanner;
 import com.audioagent.agent.workflow.service.impl.AgentProcessingWorkflowServiceImpl;
+import com.audioagent.agent.workflow.vo.AgentProcessingWorkflowVO;
 import com.audioagent.analysis.dto.UpdateProcessingStepConfirmationRequest;
 import com.audioagent.analysis.processing.ProcessingOperationType;
 import com.audioagent.analysis.processing.ProcessingPlanDraft;
@@ -108,6 +109,32 @@ class AgentProcessingWorkflowServiceImplTest {
                 eq(502L), request.capture());
         assertEquals("ACCEPTED", request.getValue().getDecision());
         assertEquals(true, request.getValue().getUserConfirmed());
+    }
+
+    @Test
+    void unifiedPlanExecutionIsReconnectedToAgentWorkflow() {
+        AgentProcessingWorkflow workflow = waitingWorkflow();
+        ProcessingConfirmationVO confirmed = ProcessingConfirmationVO.builder()
+                .confirmationId(501L).taskId(31L).planId(401L)
+                .confirmationStatus("CONFIRMED").steps(List.of()).build();
+        ProcessingExecutionVO execution = ProcessingExecutionVO.builder()
+                .executionId(601L).confirmationId(501L)
+                .executionStatus("PENDING").progressPercent(0).build();
+        when(workflowMapper.selectById(700L)).thenReturn(workflow);
+        when(confirmationService.getCurrent(7L, 31L))
+                .thenReturn(confirmed);
+        when(executionService.getByTask(7L, 31L)).thenReturn(execution);
+        when(executionService.get(7L, 601L)).thenReturn(execution);
+        when(workflowMapper.markExecuting(eq(700L), eq(601L), any()))
+                .thenReturn(1);
+        when(planService.get(7L, 31L)).thenReturn(plan());
+
+        AgentProcessingWorkflowVO result = service.get(7L, 700L);
+
+        assertEquals(601L, result.getExecutionId());
+        assertEquals("EXECUTING", result.getStatus());
+        verify(executionService).getByTask(7L, 31L);
+        verify(workflowMapper).markExecuting(eq(700L), eq(601L), any());
     }
 
     @Test

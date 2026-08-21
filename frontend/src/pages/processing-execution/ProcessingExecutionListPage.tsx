@@ -114,7 +114,6 @@ export default function ProcessingExecutionListPage() {
       <PageTitle
         eyebrow="PROCESSING TASKS"
         title="处理任务"
-        description="查看当前账号已确认并执行的真实音频处理任务。"
         actions={<Button icon={<ReloadOutlined />} loading={loading} onClick={refresh}>刷新列表</Button>}
       />
 

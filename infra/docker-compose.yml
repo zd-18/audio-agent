@@ -25,7 +25,7 @@ services:
     command: server /data --console-address ":9001"
 
     volumes:
-      - minio-data:/data
+      - ${MINIO_DATA_DIR:-minio-data}:/data
 
 volumes:
   minio-data:

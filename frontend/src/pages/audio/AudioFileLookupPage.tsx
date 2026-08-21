@@ -1,8 +1,8 @@
-import { CloudUploadOutlined, DownloadOutlined, DownOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, ToolOutlined, UndoOutlined } from '@ant-design/icons'
-import { Alert, Button, Dropdown, Input, Select, Table, Tooltip, Typography } from 'antd'
+import { CloudUploadOutlined, DownloadOutlined, DownOutlined, ReloadOutlined, SearchOutlined, ToolOutlined, UndoOutlined } from '@ant-design/icons'
+import { Alert, Button, Dropdown, Input, Select, Table, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { downloadAudioFile } from '../../api/audioFiles'
 import CreateAnalysisTaskButton from '../../components/analysis/CreateAnalysisTaskButton'
 import CreateTranscriptionButton from '../../components/transcription/CreateTranscriptionButton'
@@ -28,31 +28,41 @@ const FILE_STATUSES = [
 const PAGE_SIZES = [10, 20, 50]
 
 /** 所有列宽之和（scroll.x 必须等于该值，fixed 列才能精确对齐） */
-const TABLE_MIN_WIDTH = 1380
+const TABLE_MIN_WIDTH = 1210
+
+const MIME_FORMATS: Record<string, string> = {
+  'audio/aac': 'AAC',
+  'audio/flac': 'FLAC',
+  'audio/m4a': 'M4A',
+  'audio/mp4': 'M4A',
+  'audio/mpeg': 'MP3',
+  'audio/ogg': 'OGG',
+  'audio/wav': 'WAV',
+  'audio/wave': 'WAV',
+  'audio/x-m4a': 'M4A',
+  'audio/x-wav': 'WAV',
+  'video/mp4': 'MP4',
+}
+
+const EXTENSION_FORMATS: Record<string, string> = {
+  mpeg: 'MP3',
+  mpga: 'MP3',
+  wave: 'WAV',
+}
 
 function parsePageNumber(value: string | null, fallback: number) {
   const parsed = Number(value)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-function formatResourceId(value: string) {
-  return value.length > 15 ? `${value.slice(0, 6)}...${value.slice(-6)}` : value
-}
-
-function AudioFileIdValue({ value }: { value: string }) {
-  return (
-    <Typography.Text
-      className="audio-file-list__id"
-      copyable={{ text: value, tooltips: ['复制 audioFileId', '已复制'] }}
-    >
-      <Tooltip title={value}>
-        <span className="audio-file-list__id-value">{formatResourceId(value)}</span>
-      </Tooltip>
-    </Typography.Text>
-  )
+function audioFileFormat(record: AudioFileListItem) {
+  const extension = record.originalFileName?.match(/\.([a-z0-9]{1,8})$/i)?.[1].toLowerCase()
+  if (extension) return EXTENSION_FORMATS[extension] || extension.toUpperCase()
+  return MIME_FORMATS[record.contentType?.toLowerCase() || ''] || '音频'
 }
 
 export default function AudioFileLookupPage() {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { settings } = useUserSettings()
   const defaultPageSize = settings?.defaultPageSize ?? 10
@@ -134,17 +144,19 @@ export default function AudioFileLookupPage() {
     {
       title: '文件名称',
       dataIndex: 'originalFileName',
-      width: 300,
-      render: (value: string | undefined, record) => (
-        <div className="audio-file-list__name">
-          <strong title={value}>{value || '未命名文件'}</strong>
-          <AudioFileIdValue value={record.audioFileId} />
-        </div>
-      ),
+      width: 360,
+      render: (value?: string) => {
+        const fileName = value || '未命名音频'
+        return (
+          <div className="audio-file-list__name">
+            <Tooltip title={fileName} placement="topLeft"><strong>{fileName}</strong></Tooltip>
+          </div>
+        )
+      },
     },
-    { title: '文件类型', dataIndex: 'contentType', width: 130, render: (value?: string) => value || '—' },
-    { title: '文件大小', dataIndex: 'fileSize', width: 100, render: formatBytes },
-    { title: '音频时长', dataIndex: 'duration', width: 100, render: formatDuration },
+    { title: '文件格式', key: 'format', width: 100, render: (_, record) => <span className="audio-file-list__format">{audioFileFormat(record)}</span> },
+    { title: '文件大小', dataIndex: 'fileSize', width: 100, render: (value?: number) => <span className="audio-file-list__meta">{formatBytes(value)}</span> },
+    { title: '音频时长', dataIndex: 'duration', width: 100, render: (value?: number) => <span className="audio-file-list__meta">{formatDuration(value)}</span> },
     { title: '文件状态', dataIndex: 'status', width: 110, render: (value?: string) => <AudioFileStatusBadge status={value} /> },
     { title: '转写状态', dataIndex: 'transcriptionStatus', width: 130, render: (value?: string | null) => <TranscriptionStatusBadge status={value} /> },
     {
@@ -159,15 +171,26 @@ export default function AudioFileLookupPage() {
       title: '操作',
       key: 'actions',
       fixed: fixedActions ? 'right' : undefined,
-      width: 330,
+      width: 120,
       render: (_, record) => (
-        <div className="audio-file-list__actions">
-          <Link to={`/audio/files/${record.audioFileId}`}><Button type="link" size="small" icon={<EyeOutlined />}>详情</Button></Link>
-          <Link to={`/audio/files/${record.audioFileId}/agent`}><Button type="link" size="small" icon={<ToolOutlined />}>智能处理</Button></Link>
-          <CreateAnalysisTaskButton audioFileId={record.audioFileId} fileName={record.originalFileName} buttonType="link" size="small" label="创建任务" />
+        <div className="audio-file-list__actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
           <Dropdown
+            trigger={['click']}
             menu={{
               items: [
+                {
+                  key: 'agent',
+                  icon: <ToolOutlined />,
+                  label: <Link to={`/audio/files/${record.audioFileId}/agent`}>智能处理</Link>,
+                },
+                {
+                  key: 'analysis',
+                  label: (
+                    <span className="audio-file-list__menu-button">
+                      <CreateAnalysisTaskButton audioFileId={record.audioFileId} fileName={record.originalFileName} buttonType="text" size="small" label="创建分析任务" block />
+                    </span>
+                  ),
+                },
                 {
                   key: 'transcription',
                   label: (
@@ -193,7 +216,7 @@ export default function AudioFileLookupPage() {
               ],
             }}
           >
-            <Button type="link" size="small" icon={<DownOutlined />}>更多</Button>
+            <Button type="text" icon={<DownOutlined />} aria-label={`${record.originalFileName || '未命名音频'}更多操作`}>更多</Button>
           </Dropdown>
         </div>
       ),
@@ -202,7 +225,7 @@ export default function AudioFileLookupPage() {
 
   return (
     <PageContainer>
-      <PageTitle eyebrow="AUDIO LIBRARY" title="音频文件" description="查询当前用户上传的真实音频文件，并继续创建分析任务。" actions={<Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>上传音频</Button></Link>} />
+      <PageTitle eyebrow="AUDIO LIBRARY" title="音频文件" actions={<Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>上传音频</Button></Link>} />
 
       <section className="workbench-panel audio-file-filter" aria-labelledby="audio-file-filter-title">
         <div className="workbench-panel__heading"><div><span>FILTERS</span><h3 id="audio-file-filter-title">筛选文件</h3></div><Button type="text" icon={<ReloadOutlined />} loading={loading} onClick={refresh}>刷新</Button></div>
@@ -232,6 +255,17 @@ export default function AudioFileLookupPage() {
           scroll={{ x: TABLE_MIN_WIDTH }}
           tableLayout="fixed"
           locale={{ emptyText: <EmptyState title="暂无音频文件" description="当前筛选条件下没有记录，可以调整条件或上传新音频。" action={<Link to="/audio/upload"><Button type="primary">上传音频</Button></Link>} /> }}
+          onRow={(record) => ({
+            className: 'audio-file-list__row',
+            tabIndex: 0,
+            'aria-label': `查看音频详情：${record.originalFileName || '未命名音频'}`,
+            onClick: () => navigate(`/audio/files/${encodeURIComponent(record.audioFileId)}`),
+            onKeyDown: (event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              navigate(`/audio/files/${encodeURIComponent(record.audioFileId)}`)
+            },
+          })}
           pagination={{
             current: data.current,
             pageSize: data.size,

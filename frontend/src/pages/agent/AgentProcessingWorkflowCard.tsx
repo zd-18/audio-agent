@@ -36,12 +36,8 @@ function stepDescription(step: AgentProcessingWorkflow['steps'][number]) {
 
 export default function AgentProcessingWorkflowCard({
   workflow,
-  confirming,
-  onConfirm,
 }: {
   workflow: AgentProcessingWorkflow
-  confirming: boolean
-  onConfirm: (workflowId: string) => void
 }) {
   const activeIndex = ACTIVE_INDEX[workflow.status]
   const failed = workflow.status === 'FAILED'
@@ -90,15 +86,15 @@ export default function AgentProcessingWorkflowCard({
 
       {workflow.status === 'WAITING_CONFIRMATION' && (
         <div className="agent-workflow-confirm">
-          <p>确认后才会修改音频，并生成一个新的结果文件；原文件不会被覆盖。</p>
+          <p>方案已生成。请进入统一处理方案页查看步骤、调整参数并最终确认；原文件不会被覆盖。</p>
           <Button
             htmlType="button"
             type="primary"
-            loading={confirming}
-            disabled={confirming}
-            onClick={() => onConfirm(workflow.workflowId)}
+            onClick={() => navigate(
+              `/analysis/tasks/${encodeURIComponent(workflow.taskId)}/processing-plan?source=processing&audioFileId=${encodeURIComponent(workflow.audioFileId)}`,
+            )}
           >
-            {confirming ? '正在开始处理' : '确认并开始处理'}
+            查看并确认处理方案
           </Button>
         </div>
       )}

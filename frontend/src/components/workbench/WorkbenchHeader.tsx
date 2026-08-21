@@ -1,10 +1,11 @@
-import { LockOutlined, LogoutOutlined, MenuOutlined, ProfileOutlined, UserOutlined } from '@ant-design/icons'
-import { Avatar, Breadcrumb, Button, Descriptions, Dropdown, Modal, Space } from 'antd'
+import { LockOutlined, LogoutOutlined, MenuOutlined, ProfileOutlined } from '@ant-design/icons'
+import { Breadcrumb, Button, Descriptions, Dropdown, Modal, Space } from 'antd'
 import type { MenuProps } from 'antd'
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import ChangePasswordModal from '../settings/ChangePasswordModal'
+import UsernameAvatar from '../user/UsernameAvatar'
 import { getRouteMeta } from './navigation'
 
 interface WorkbenchHeaderProps {
@@ -50,7 +51,7 @@ export default function WorkbenchHeader({ onOpenMenu }: WorkbenchHeaderProps) {
       >
         <Button className="workbench-user" type="text" aria-label="打开用户菜单">
           <Space>
-            <Avatar size={32} src={currentUser?.avatarUrl || undefined} icon={<UserOutlined />} />
+            <UsernameAvatar username={currentUser?.username} size={32} />
             <span className="workbench-user__copy"><strong>{currentUser?.displayName || currentUser?.username}</strong><small>个人工作区</small></span>
           </Space>
         </Button>

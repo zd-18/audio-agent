@@ -14,7 +14,6 @@ import { Link } from 'react-router-dom'
 import { retryAnalysisTask } from '../../api/analysisTasks'
 import EmptyState from '../../components/workbench/EmptyState'
 import PageContainer from '../../components/workbench/PageContainer'
-import PageTitle from '../../components/workbench/PageTitle'
 import { useUserTasks } from '../../hooks/useUserTasks'
 import type { UserTaskProgress, UserTaskStage, UserTaskStageStatus } from '../../types/userTask'
 import { formatDateTime } from '../../utils/formatters'
@@ -35,18 +34,27 @@ function StageIcon({ status }: { status: UserTaskStageStatus }) {
   return <ClockCircleOutlined />
 }
 
-function TaskStages({ stages }: { stages: UserTaskStage[] }) {
+function getStageLabel(code: string, fallbackLabel: string) {
+  return code === 'INTELLIGENT_ANALYSIS' ? '智能诊断' : fallbackLabel
+}
+
+function TaskStages({ stages, currentStage }: { stages: UserTaskStage[]; currentStage: string }) {
+  const mainStages = stages.filter((stage) => stage.code !== 'SPEECH_TRANSCRIPTION')
+
   return (
     <ol className="user-task-stages" aria-label="任务处理步骤">
-      {stages.map((stage) => (
-        <li key={stage.code} className={`is-${stage.status.toLowerCase()}`}>
-          <span className="user-task-stage__icon" aria-hidden="true">
-            <StageIcon status={stage.status} />
-          </span>
-          <div>
-            <strong>{stage.label}</strong>
-            {stage.status !== 'PENDING' && <small>{stage.description}</small>}
+      {mainStages.map((stage) => (
+        <li
+          key={stage.code}
+          className={`is-${stage.status.toLowerCase()}`}
+          aria-current={stage.code === currentStage ? 'step' : undefined}
+        >
+          <div className="user-task-stage__node">
+            <span className="user-task-stage__icon" aria-hidden="true">
+              <StageIcon status={stage.status} />
+            </span>
           </div>
+          <strong>{getStageLabel(stage.code, stage.label)}</strong>
         </li>
       ))}
     </ol>
@@ -110,8 +118,10 @@ function CurrentTaskCard({
 
       <div className="user-task-card__now" aria-live="polite">
         <div>
-          <span>当前阶段</span>
-          <strong>{task.currentStageLabel}</strong>
+          <div className="user-task-card__current-title">
+            <span>当前阶段：</span>
+            <strong>{getStageLabel(task.currentStage, task.currentStageLabel)}</strong>
+          </div>
           <p>{task.currentActivity}</p>
         </div>
         <strong className="user-task-card__percent">{task.progressPercent}%</strong>
@@ -120,11 +130,12 @@ function CurrentTaskCard({
         className="user-task-card__progress"
         percent={task.progressPercent}
         showInfo={false}
+        size={['100%', 6]}
         status={exception ? 'exception' : 'active'}
         aria-label={`任务完成进度 ${task.progressPercent}%`}
       />
 
-      <TaskStages stages={task.stages} />
+      <TaskStages stages={task.stages} currentStage={task.currentStage} />
 
       {task.failureReason && (
         <Alert
@@ -157,7 +168,9 @@ function HistoryCard({ task }: { task: UserTaskProgress }) {
       </div>
       {task.resultPath && (
         <Link to={task.resultPath}>
-          <Button type="primary">查看结果<RightOutlined /></Button>
+          <Button className="user-task-history-card__result-button" type="primary">
+            查看结果<RightOutlined />
+          </Button>
         </Link>
       )}
     </article>
@@ -188,17 +201,6 @@ export default function UserTasksPage() {
 
   return (
     <PageContainer>
-      <PageTitle
-        eyebrow="TASK PROGRESS"
-        title="任务进度"
-        description="查看音频处理到哪一步、系统当前正在做什么，以及你接下来可以执行的操作。"
-        actions={(
-          <Button icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>
-            刷新进度
-          </Button>
-        )}
-      />
-
       {error && (
         <Alert
           className="user-task-page__error"
@@ -229,16 +231,21 @@ export default function UserTasksPage() {
         <section className="workbench-panel">
           <EmptyState
             title="还没有音频任务"
-            description="上传音频并开始分析后，你可以在这里查看完整处理进度。"
+            description="上传音频并开始智能诊断后，你可以在这里查看完整任务进度。"
             action={<Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>上传音频</Button></Link>}
           />
         </section>
       ) : (
         <>
-          <section className="user-task-section" aria-labelledby="current-tasks-title">
+          <section className="user-task-section user-task-section--current" aria-labelledby="current-tasks-title">
             <div className="user-task-section__heading">
               <div><span>IN PROGRESS</span><h2 id="current-tasks-title">当前任务</h2></div>
-              <small>{currentTasks.length} 个需要关注</small>
+              <div className="user-task-section__meta">
+                <small>{currentTasks.length} 个需要关注</small>
+                <Button icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>
+                  刷新进度
+                </Button>
+              </div>
             </div>
             {currentTasks.length > 0 ? (
               <div className="user-task-list">

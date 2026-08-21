@@ -227,7 +227,7 @@ export default function IssueTimeline({
               </dl>
               <div className="report-selected-issue__actions">
                 <Button icon={<AimOutlined />} onClick={() => selectIssue(selected)}>定位到此处</Button>
-                <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => selectIssue(selected, undefined, true)}>试听此片段</Button>
+                <Button icon={<PlayCircleOutlined />} onClick={() => selectIssue(selected, undefined, true)}>试听此片段</Button>
               </div>
             </article>
           )}

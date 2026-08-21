@@ -68,6 +68,7 @@ describe('LandingHeader authentication state', () => {
 
     expect(screen.queryByRole('link', { name: '登录' })).not.toBeInTheDocument()
     expect(screen.getByText('音频创作者')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'audio-user的默认头像' })).toHaveTextContent('A')
     expect(screen.getByRole('button', { name: '打开音频创作者的用户菜单' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '进入工作台' })).toHaveAttribute('href', '/dashboard')
   })

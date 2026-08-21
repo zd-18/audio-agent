@@ -15,7 +15,7 @@ export const CONFIRMATION_STATUS_META: Record<
     description: '可以逐项接受、暂不处理或保留为待决定。',
   },
   CONFIRMED: {
-    label: '已提交最终方案',
+    label: '处理方案已确认',
     description: '当前决定已经锁定，页面已切换为只读模式。',
   },
   STALE: {
@@ -46,6 +46,7 @@ const ERROR_MESSAGES: Record<number, string> = {
   40218: '参数不符合要求，请检查标出的字段后重试。',
   40219: '最终方案已经提交，无需重复操作。',
   40220: '确认草稿已经取消，不能继续编辑。',
+  40915: '暂时无法获取当前音频的处理信息，请返回上一页重新进入后重试。',
 }
 
 export function getProcessingConfirmationErrorMessage(
@@ -56,7 +57,7 @@ export function getProcessingConfirmationErrorMessage(
     if (error.code !== undefined && ERROR_MESSAGES[error.code]) {
       return ERROR_MESSAGES[error.code]
     }
-    return error.message || fallback
+    return /[\u3400-\u9fff]/.test(error.message) ? error.message : fallback
   }
-  return error instanceof Error ? error.message : fallback
+  return error instanceof Error && /[\u3400-\u9fff]/.test(error.message) ? error.message : fallback
 }

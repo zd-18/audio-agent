@@ -80,7 +80,6 @@ export default function ProcessingExecutionPage() {
         <PageTitle
           eyebrow="AUDIO PROCESSING"
           title="音频处理任务"
-          description="查看已确认音频处理任务的进度与结果。"
         />
         <Alert
           type="error"

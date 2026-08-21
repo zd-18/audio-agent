@@ -323,7 +323,12 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
             return AnalysisType.FULL;
         }
         try {
-            return AnalysisType.valueOf(analysisType.toUpperCase());
+            AnalysisType resolved = AnalysisType.valueOf(
+                    analysisType.toUpperCase());
+            if (resolved != AnalysisType.FULL) {
+                throw new IllegalArgumentException();
+            }
+            return resolved;
         } catch (IllegalArgumentException e) {
             throw new BusinessException(
                     ErrorCode.PARAM_INVALID,
@@ -369,7 +374,9 @@ public class AudioAnalysisTaskServiceImpl implements AudioAnalysisTaskService {
         }
         String normalized = analysisType.trim().toUpperCase(Locale.ROOT);
         try {
-            AnalysisType.valueOf(normalized);
+            if (AnalysisType.valueOf(normalized) != AnalysisType.FULL) {
+                throw new IllegalArgumentException();
+            }
             return normalized;
         } catch (IllegalArgumentException e) {
             throw new BusinessException(ErrorCode.PARAM_INVALID,

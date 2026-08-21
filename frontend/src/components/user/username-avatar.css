@@ -1,0 +1,14 @@
+.username-avatar-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.username-avatar.ant-avatar {
+  flex: 0 0 auto;
+  border: 1px solid rgba(160, 104, 255, 0.35);
+  background: rgba(160, 104, 255, 0.16);
+  color: #d8c8ff;
+  font-weight: 700;
+  text-transform: uppercase;
+}

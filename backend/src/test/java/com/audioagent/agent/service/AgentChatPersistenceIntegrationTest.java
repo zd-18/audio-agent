@@ -106,26 +106,57 @@ class AgentChatPersistenceIntegrationTest {
     void processingConversationCreatedForAudioFileWithoutTranscript()
             throws Exception {
         // 未转写 / 转写失败：该 audio_file 不存在任何 audio_transcript 记录，
-        // 仅凭 audioFileId 仍能进入音频处理 Agent。
+        // 也没有智能诊断任务；仅凭 audioFileId 仍能进入音频处理 Agent。
         seedAudioFileWithoutTranscript(7L, 83L, "cleanup.mp3", 5_000);
-        seedSuccessfulAnalysisTask(41L, 83L);
 
         AgentConversationVO conversation = conversationService.create(7L,
                 audioFileRequest("83", null));
         assertEquals("cleanup.mp3", conversation.getTitle());
         assertEquals("83", conversation.getAudioFileId());
         assertNull(conversation.getTranscriptId());
+        var stored = conversationMapper.selectById(
+                Long.valueOf(conversation.getConversationId()));
+        assertEquals(83L, stored.getAudioFileId());
+        assertNull(stored.getTranscriptId());
 
         when(aiChatClient.chat(any())).thenReturn(processingResponse());
         var result = chatService.send(7L, conversation.getConversationId(),
-                processingRequest("压缩过长的停顿", "processing-1"));
+                processingRequest("帮我轻度降噪", "processing-1"));
 
         assertNotNull(result.getProcessingWorkflow());
         assertEquals("WAITING_CONFIRMATION",
                 result.getProcessingWorkflow().getStatus());
         assertEquals("83", result.getProcessingWorkflow()
                 .getAudioFileId().toString());
+        assertEquals("PROCESSING_CONTEXT", jdbcTemplate.queryForObject("""
+                SELECT analysis_type FROM audio_analysis_task
+                WHERE id = ?
+                """, String.class,
+                result.getProcessingWorkflow().getTaskId()));
         verify(aiChatClient).chat(any());
+    }
+
+    @Test
+    void differentAudioFilesBuildIndependentProcessingContexts()
+            throws Exception {
+        seedAudioFileWithoutTranscript(7L, 86L, "first.mp3", 4_000);
+        seedAudioFileWithoutTranscript(7L, 87L, "second.mp3", 7_000);
+        when(aiChatClient.chat(any())).thenReturn(
+                processingResponse(), processingResponse());
+
+        var firstConversation = conversationService.create(7L,
+                audioFileRequest("86", null));
+        var secondConversation = conversationService.create(7L,
+                audioFileRequest("87", null));
+        var first = chatService.send(7L, firstConversation.getConversationId(),
+                processingRequest("帮我轻度降噪", "processing-first"));
+        var second = chatService.send(7L, secondConversation.getConversationId(),
+                processingRequest("帮我轻度降噪", "processing-second"));
+
+        assertEquals(86L, first.getProcessingWorkflow().getAudioFileId());
+        assertEquals(87L, second.getProcessingWorkflow().getAudioFileId());
+        assertTrue(!first.getProcessingWorkflow().getTaskId().equals(
+                second.getProcessingWorkflow().getTaskId()));
     }
 
     @Test

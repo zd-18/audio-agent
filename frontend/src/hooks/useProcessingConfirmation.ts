@@ -219,6 +219,66 @@ export function useProcessingConfirmation(taskId?: string, planKey?: string) {
     }
   }, [confirmation, registerController, releaseController])
 
+  const acceptAllAndConfirm = useCallback(async (
+    target: ProcessingConfirmation,
+    userNote?: string,
+  ) => {
+    if (confirmLockedRef.current) return null
+    confirmLockedRef.current = true
+    const controller = registerController()
+    const stepIds = new Set(target.steps.map((step) => step.stepConfirmationId))
+    const normalizedNote = userNote?.trim() || null
+    setConfirming(true)
+    savingStepIdsRef.current = stepIds
+    setSavingStepIds(new Set(stepIds))
+    try {
+      const savedSteps: ProcessingStepConfirmation[] = []
+      for (const step of target.steps) {
+        const savedStep = await updateProcessingStepConfirmation(
+          target.confirmationId,
+          step.stepConfirmationId,
+          {
+            decision: 'ACCEPTED',
+            userConfirmed: true,
+            parameterOverrides: step.parameterOverrides,
+            userNote: normalizedNote || step.userNote,
+          },
+          controller.signal,
+        )
+        savedSteps.push(savedStep)
+        savingStepIdsRef.current.delete(step.stepConfirmationId)
+        if (mountedRef.current) {
+          setSavingStepIds(new Set(savingStepIdsRef.current))
+          setConfirmation((previous) => previous?.confirmationId === target.confirmationId
+            ? {
+                ...previous,
+                steps: previous.steps.map((item) => (
+                  item.stepConfirmationId === savedStep.stepConfirmationId ? savedStep : item
+                )),
+                acceptedStepCount: savedSteps.length,
+                rejectedStepCount: 0,
+                pendingStepCount: target.steps.length - savedSteps.length,
+              }
+            : previous)
+        }
+      }
+      const nextConfirmation = await confirmProcessingConfirmation(
+        target.confirmationId,
+        controller.signal,
+      )
+      if (!controller.signal.aborted && mountedRef.current) setConfirmation(nextConfirmation)
+      return nextConfirmation
+    } finally {
+      releaseController(controller)
+      confirmLockedRef.current = false
+      savingStepIdsRef.current.clear()
+      if (!controller.signal.aborted && mountedRef.current) {
+        setSavingStepIds(new Set())
+        setConfirming(false)
+      }
+    }
+  }, [registerController, releaseController])
+
   const cancel = useCallback(async () => {
     if (!confirmation || cancelLockedRef.current) return null
     cancelLockedRef.current = true
@@ -252,6 +312,7 @@ export function useProcessingConfirmation(taskId?: string, planKey?: string) {
     create,
     updateStep,
     confirm,
+    acceptAllAndConfirm,
     cancel,
   }
 }

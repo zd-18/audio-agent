@@ -1,11 +1,10 @@
 import { App as AntdApp } from 'antd'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createAgentConversation,
-  confirmAgentProcessingWorkflow,
   getAgentConversations,
   getAgentMessages,
   getAgentProcessingWorkflow,
@@ -15,6 +14,7 @@ import {
 import { ApiError } from '../../api/http'
 import { useAudioPlayback } from '../../hooks/useAudioPlayback'
 import type { AudioPlaybackController } from '../../hooks/useAudioPlayback'
+import { useAudioFileDetail } from '../../hooks/useAudioFileDetail'
 import { useTranscript } from '../../hooks/useTranscript'
 import { useTranscriptionTaskPolling } from '../../hooks/useTranscriptionTaskPolling'
 import type {
@@ -29,7 +29,6 @@ import AgentConversationPage from './AgentConversationPage'
 
 vi.mock('../../api/agent', () => ({
   createAgentConversation: vi.fn(),
-  confirmAgentProcessingWorkflow: vi.fn(),
   getAgentConversations: vi.fn(),
   getAgentMessages: vi.fn(),
   getAgentProcessingWorkflow: vi.fn(),
@@ -42,6 +41,7 @@ vi.mock('../../hooks/useTranscriptionTaskPolling', () => ({
 }))
 vi.mock('../../hooks/useTranscript', () => ({ useTranscript: vi.fn() }))
 vi.mock('../../hooks/useAudioPlayback', () => ({ useAudioPlayback: vi.fn() }))
+vi.mock('../../hooks/useAudioFileDetail', () => ({ useAudioFileDetail: vi.fn() }))
 vi.mock('../../components/audio/ReportAudioPlayer', () => ({
   default: () => <div aria-label="引用音频播放器">播放器</div>,
 }))
@@ -101,6 +101,15 @@ function conversation(id = conversationId, updatedAt = '2026-08-04T10:00:00'): A
     audioDurationMs: null,
     createdAt: updatedAt,
     updatedAt,
+  }
+}
+
+function processingConversation(): AgentConversation {
+  return {
+    ...conversation(),
+    transcriptId: null,
+    audioFileId,
+    title: '待处理音频.wav',
   }
 }
 
@@ -204,7 +213,6 @@ const createConversationMock = vi.mocked(createAgentConversation)
 const sendMessageMock = vi.mocked(sendAgentMessage)
 const getWorkflowsMock = vi.mocked(getAgentProcessingWorkflows)
 const getWorkflowMock = vi.mocked(getAgentProcessingWorkflow)
-const confirmWorkflowMock = vi.mocked(confirmAgentProcessingWorkflow)
 
 function player(): AudioPlaybackController {
   return {
@@ -254,6 +262,21 @@ function renderPage() {
   return render(pageElement())
 }
 
+function renderProcessingPage() {
+  return render(
+    <AntdApp>
+      <MemoryRouter
+        initialEntries={[`/audio/files/${audioFileId}/agent`]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/audio/files/:audioFileId/agent" element={<AgentConversationPage />} />
+        </Routes>
+      </MemoryRouter>
+    </AntdApp>,
+  )
+}
+
 describe('AgentConversationPage', () => {
   beforeEach(() => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => clientRequestId) })
@@ -290,7 +313,6 @@ describe('AgentConversationPage', () => {
     sendMessageMock.mockReset().mockResolvedValue(pair())
     getWorkflowsMock.mockReset().mockResolvedValue([])
     getWorkflowMock.mockReset()
-    confirmWorkflowMock.mockReset()
     vi.mocked(useTranscriptionTaskPolling).mockReturnValue({
       task,
       loading: false,
@@ -307,6 +329,45 @@ describe('AgentConversationPage', () => {
       refresh: vi.fn(),
     })
     vi.mocked(useAudioPlayback).mockImplementation(() => playerController)
+    vi.mocked(useAudioFileDetail).mockReturnValue({
+      data: {
+        fileId: audioFileId,
+        originalName: '待处理音频.wav',
+        extension: 'wav',
+        mimeType: 'audio/wav',
+        sizeBytes: 1000,
+        sha256: 'abc',
+        durationMs: 90_000,
+        fileStatus: 'AVAILABLE',
+        createdAt: '2026-08-04T09:00:00',
+      },
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    })
+  })
+
+  it('creates a PROCESSING conversation with audioFileId and sends processing mode', async () => {
+    getConversationsMock.mockResolvedValue({
+      records: [], current: 1, size: 20, total: 0, pages: 0,
+    })
+    createConversationMock.mockResolvedValue(processingConversation())
+    renderProcessingPage()
+
+    expect(await screen.findByRole('heading', { name: '开始处理这段音频' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '开始新的对话' })).not.toBeInTheDocument()
+    await userEvent.type(await screen.findByLabelText('描述你希望如何处理音频'), '帮我轻度降噪')
+    await userEvent.click(screen.getByRole('button', { name: '发送处理请求' }))
+
+    await waitFor(() => expect(createConversationMock).toHaveBeenCalledWith(
+      { audioFileId, title: null },
+      expect.any(AbortSignal),
+    ))
+    await waitFor(() => expect(sendMessageMock).toHaveBeenCalledWith(
+      conversationId,
+      { content: '帮我轻度降噪', clientRequestId, mode: 'PROCESSING' },
+      expect.any(AbortSignal),
+    ))
   })
 
   it('does not allow blank questions to be sent', async () => {
@@ -506,59 +567,18 @@ describe('AgentConversationPage', () => {
     expect(screen.queryByText('问题未成功发送')).not.toBeInTheDocument()
   })
 
-  it('moves SILENCE_CLEANUP into processing after confirm succeeds', async () => {
+  it('shows the unified processing-plan entry for an Agent plan', async () => {
     const waiting = processingWorkflow()
     getMessagesMock.mockResolvedValue({
       records: [pair().assistantMessage], current: 1, size: 50, total: 1, pages: 1,
     })
     getWorkflowsMock.mockResolvedValue([waiting])
-    confirmWorkflowMock.mockResolvedValue(processingWorkflow('EXECUTING'))
     renderPage()
 
-    await userEvent.click(await screen.findByRole('button', { name: '确认并开始处理' }))
-
-    expect(await screen.findByText('正在处理')).toBeInTheDocument()
-    expect(confirmWorkflowMock).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('button', { name: '查看并确认处理方案' }))
+      .toBeInTheDocument()
+    expect(screen.getAllByText('压缩长静音')).toHaveLength(2)
     expect(screen.queryByText('问题未成功发送')).not.toBeInTheDocument()
-  })
-
-  it('sends only one confirm request for one rapid double click', async () => {
-    const waiting = processingWorkflow()
-    let resolveConfirm!: (workflow: AgentProcessingWorkflow) => void
-    confirmWorkflowMock.mockReturnValue(new Promise((resolve) => { resolveConfirm = resolve }))
-    getMessagesMock.mockResolvedValue({
-      records: [pair().assistantMessage], current: 1, size: 50, total: 1, pages: 1,
-    })
-    getWorkflowsMock.mockResolvedValue([waiting])
-    renderPage()
-
-    const confirmButton = await screen.findByRole('button', { name: '确认并开始处理' })
-    act(() => {
-      confirmButton.click()
-      confirmButton.click()
-    })
-
-    expect(confirmWorkflowMock).toHaveBeenCalledTimes(1)
-    resolveConfirm(processingWorkflow('EXECUTING'))
-    expect(await screen.findByText('正在处理')).toBeInTheDocument()
-  })
-
-  it('shows a sanitized audio-processing error when confirm fails', async () => {
-    getMessagesMock.mockResolvedValue({
-      records: [pair().assistantMessage], current: 1, size: 50, total: 1, pages: 1,
-    })
-    getWorkflowsMock.mockResolvedValue([processingWorkflow()])
-    confirmWorkflowMock.mockRejectedValue(new ApiError(
-      'targetLufs must be a finite number', 40917,
-    ))
-    renderPage()
-
-    await userEvent.click(await screen.findByRole('button', { name: '确认并开始处理' }))
-
-    expect(await screen.findByText('音频处理操作失败')).toBeInTheDocument()
-    expect(screen.getByText('音频处理未能启动，请稍后重试。')).toBeInTheDocument()
-    expect(screen.queryByText('问题未成功发送')).not.toBeInTheDocument()
-    expect(screen.queryByText(/targetLufs|NaN|FFmpeg/i)).not.toBeInTheDocument()
   })
 
   it('loads the matching history after a conversation switch', async () => {

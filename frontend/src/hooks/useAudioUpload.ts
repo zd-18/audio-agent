@@ -49,6 +49,7 @@ export function useAudioUpload() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<AudioFileRecord | null>(null)
   const [instantUpload, setInstantUpload] = useState(false)
+  const [resumed, setResumed] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
   const hashRef = useRef<string | null>(null)
   const runSequenceRef = useRef(0)
@@ -77,6 +78,7 @@ export function useAudioUpload() {
     setTotalChunks(0)
     setResult(null)
     setInstantUpload(false)
+    setResumed(false)
     return !validationError
   }, [])
 
@@ -94,6 +96,7 @@ export function useAudioUpload() {
     setError(null)
     setResult(null)
     setInstantUpload(false)
+    setResumed(false)
   }, [])
 
   const pause = useCallback(() => {
@@ -113,6 +116,7 @@ export function useAudioUpload() {
     controllerRef.current = controller
     setError(null)
     setInstantUpload(false)
+    setResumed(false)
 
     try {
       let sha256 = hashRef.current
@@ -161,6 +165,7 @@ export function useAudioUpload() {
       )
       if (runSequenceRef.current !== runSequence) return
       const uploaded = new Set(serverProgress.uploadedChunks)
+      setResumed(initialized.resumed)
       setUploadedCount(uploaded.size)
       setTotalChunks(serverProgress.totalChunks)
       setProgress(Math.round((uploaded.size / serverProgress.totalChunks) * 100))
@@ -216,6 +221,7 @@ export function useAudioUpload() {
     error,
     result,
     instantUpload,
+    resumed,
     selectFile,
     upload,
     pause,

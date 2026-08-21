@@ -20,6 +20,7 @@ public class MultipartUploadStateStore {
     private static final String STATE_PREFIX = "audio:multipart:state:";
     private static final String CHUNKS_PREFIX = "audio:multipart:chunks:";
     private static final String LOCK_PREFIX = "audio:multipart:lock:";
+    private static final String RESUME_PREFIX = "audio:multipart:resume:";
     private static final String CLEANUP_KEY = "audio:multipart:cleanup";
     private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT =
             new DefaultRedisScript<>(
@@ -40,6 +41,7 @@ public class MultipartUploadStateStore {
         values.put("mimeType", state.getMimeType());
         values.put("sizeBytes", state.getSizeBytes().toString());
         values.put("sha256", state.getSha256());
+        values.put("resumeFingerprint", state.getResumeFingerprint());
         values.put("chunkSize", state.getChunkSize().toString());
         values.put("totalChunks", state.getTotalChunks().toString());
         values.put("finalObjectKey", state.getFinalObjectKey());
@@ -47,6 +49,8 @@ public class MultipartUploadStateStore {
         values.put("createdAt", state.getCreatedAt().toString());
         values.put("updatedAt", state.getUpdatedAt().toString());
         redisTemplate.opsForHash().putAll(stateKey(state.getUploadId()), values);
+        redisTemplate.opsForValue().set(
+                resumeKey(state.getResumeFingerprint()), state.getUploadId());
         touch(state);
     }
 
@@ -64,6 +68,8 @@ public class MultipartUploadStateStore {
                 .mimeType(value(values, "mimeType"))
                 .sizeBytes(Long.valueOf(value(values, "sizeBytes")))
                 .sha256(value(values, "sha256"))
+                .resumeFingerprint(optionalString(values,
+                        "resumeFingerprint"))
                 .chunkSize(Long.valueOf(value(values, "chunkSize")))
                 .totalChunks(Integer.valueOf(value(values, "totalChunks")))
                 .finalObjectKey(value(values, "finalObjectKey"))
@@ -72,6 +78,29 @@ public class MultipartUploadStateStore {
                 .createdAt(Long.valueOf(value(values, "createdAt")))
                 .updatedAt(Long.valueOf(value(values, "updatedAt")))
                 .build());
+    }
+
+    public Optional<String> findResumeUploadId(String fingerprint) {
+        return Optional.ofNullable(redisTemplate.opsForValue().get(
+                resumeKey(fingerprint)));
+    }
+
+    public void bindResumeSession(MultipartUploadState state,
+                                  String fingerprint) {
+        state.setResumeFingerprint(fingerprint);
+        redisTemplate.opsForHash().put(stateKey(state.getUploadId()),
+                "resumeFingerprint", fingerprint);
+        redisTemplate.opsForValue().set(resumeKey(fingerprint),
+                state.getUploadId());
+        touch(state);
+    }
+
+    public void removeResumeSession(String fingerprint, String uploadId) {
+        if (fingerprint == null || fingerprint.isBlank()) {
+            return;
+        }
+        redisTemplate.execute(RELEASE_LOCK_SCRIPT,
+                List.of(resumeKey(fingerprint)), uploadId);
     }
 
     public List<Integer> uploadedChunks(String uploadId) {
@@ -176,6 +205,10 @@ public class MultipartUploadStateStore {
         Duration ttl = Duration.ofHours(properties.getStateTtlHours());
         redisTemplate.expire(stateKey(state.getUploadId()), ttl);
         redisTemplate.expire(chunksKey(state.getUploadId()), ttl);
+        if (state.getResumeFingerprint() != null
+                && !state.getResumeFingerprint().isBlank()) {
+            redisTemplate.expire(resumeKey(state.getResumeFingerprint()), ttl);
+        }
         redisTemplate.opsForZSet().add(CLEANUP_KEY, cleanupMember(state),
                 System.currentTimeMillis() + ttl.toMillis());
     }
@@ -198,6 +231,12 @@ public class MultipartUploadStateStore {
         return value == null ? null : Long.valueOf(value.toString());
     }
 
+    private static String optionalString(Map<Object, Object> values,
+                                         String key) {
+        Object value = values.get(key);
+        return value == null ? null : value.toString();
+    }
+
     private static String stateKey(String uploadId) {
         return STATE_PREFIX + uploadId;
     }
@@ -208,6 +247,10 @@ public class MultipartUploadStateStore {
 
     private static String lockKey(String uploadId) {
         return LOCK_PREFIX + uploadId;
+    }
+
+    private static String resumeKey(String fingerprint) {
+        return RESUME_PREFIX + fingerprint;
     }
 
     public record ExpiredUpload(Long userId, String uploadId,

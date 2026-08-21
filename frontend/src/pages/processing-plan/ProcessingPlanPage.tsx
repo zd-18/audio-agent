@@ -1,14 +1,14 @@
 import {
   ArrowLeftOutlined,
-  CopyOutlined,
-  ReloadOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons'
-import { Alert, Button, Modal, Tooltip, Typography } from 'antd'
+import { Alert, Button, Modal, Tooltip } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { downloadAudioFile } from '../../api/audioFiles'
 import { ApiError, isValidResourceId } from '../../api/http'
 import { generateProcessingPlan, getProcessingPlan } from '../../api/processingPlan'
+import { createProcessingExecution } from '../../api/processingExecution'
 import ReportAudioPlayer from '../../components/audio/ReportAudioPlayer'
 import EmptyState from '../../components/workbench/EmptyState'
 import PageContainer from '../../components/workbench/PageContainer'
@@ -18,17 +18,18 @@ import { useProcessingConfirmation } from '../../hooks/useProcessingConfirmation
 import { useProcessingPlan } from '../../hooks/useProcessingPlan'
 import { useUserSettings } from '../../settings/UserSettingsContext'
 import type { ProcessingStep } from '../../types/processingPlan'
-import { formatDateTime } from '../../utils/formatters'
+import { formatDuration } from '../../utils/audioTime'
 import { getProcessingConfirmationErrorMessage } from '../../utils/processingConfirmationDisplay'
-import { getPlanStatusLabel, hasSegmentRange, isWholeAudioOperation } from '../../utils/processingPlanDisplay'
+import {
+  getProcessingExecutionErrorMessage,
+  PROCESSING_EXECUTION_ALREADY_EXISTS_CODE,
+} from '../../utils/processingExecutionDisplay'
+import { getProcessingPlanErrorMessage, hasSegmentRange, isWholeAudioOperation } from '../../utils/processingPlanDisplay'
 import '../analysis/analysis-report.css'
 import './processing-plan.css'
-import PlanFilters from './components/PlanFilters'
-import type { ProcessingPlanFilter } from './components/PlanFilters'
 import PlanSummary from './components/PlanSummary'
-import ConfirmationActions from './components/ConfirmationActions'
-import ConfirmationSummary from './components/ConfirmationSummary'
 import ProcessingExecutionEntry from '../processing-execution/components/ProcessingExecutionEntry'
+import ProcessingPlanConfirmationModal from './components/ProcessingPlanConfirmationModal'
 import ProcessingPlanErrorState from './components/ProcessingPlanErrorState'
 import ProcessingPlanSkeleton from './components/ProcessingPlanSkeleton'
 import ProcessingStepDetail from './components/ProcessingStepDetail'
@@ -46,28 +47,21 @@ function scrollToPlayer() {
   })
 }
 
-function matchesFilter(step: ProcessingStep, filter: ProcessingPlanFilter) {
-  if (filter === 'ALL') return true
-  if (filter === 'HIGH') return step.priority === 'HIGH'
-  if (filter === 'MEDIUM') return step.priority === 'MEDIUM'
-  if (filter === 'CONFIRMATION') return step.requiresConfirmation
-  if (filter === 'SEGMENT') return hasSegmentRange(step)
-  return isWholeAudioOperation(step.operationType)
-}
-
-function generationErrorMessage(error: unknown) {
-  if (error instanceof ApiError) {
-    if (error.code === 40210) return '分析结果尚未准备完成，暂时无法生成处理方案。'
-    if (error.code === 40101) return '未找到对应分析任务。'
-    if (error.code === 40212) return '当前分析数据不完整，暂时无法生成处理方案。'
-    return error.message || '处理方案生成失败，请稍后重试。'
-  }
-  return error instanceof Error ? error.message : '处理方案生成失败，请稍后重试。'
-}
-
 export default function ProcessingPlanPage() {
   const { taskId } = useParams()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const validTaskId = isValidResourceId(taskId) ? taskId : undefined
+  const planSource = searchParams.get('source') === 'processing' ? 'processing' : 'diagnosis'
+  const sourceAudioFileId = isValidResourceId(searchParams.get('audioFileId'))
+    ? searchParams.get('audioFileId')!
+    : undefined
+  const backPath = planSource === 'processing' && sourceAudioFileId
+    ? `/audio/files/${encodeURIComponent(sourceAudioFileId)}/agent`
+    : validTaskId
+      ? `/analysis/tasks/${encodeURIComponent(validTaskId)}/report`
+      : '/analysis/tasks'
+  const backLabel = planSource === 'processing' ? '返回智能处理' : '返回诊断结果'
   const { plan, error, loading, refreshing, reload, applyPlan } = useProcessingPlan(validTaskId)
   const { settings } = useUserSettings()
   const currentPlan = plan?.taskId === validTaskId ? plan : null
@@ -79,15 +73,15 @@ export default function ProcessingPlanPage() {
       : undefined,
   )
   const [modal, modalContext] = Modal.useModal()
-  const [filter, setFilter] = useState<ProcessingPlanFilter>('ALL')
   const [selectedStepId, setSelectedStepId] = useState<string>()
   const [generating, setGenerating] = useState(false)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
-  const [editorDirty, setEditorDirty] = useState(false)
-  const [listenedStepIds, setListenedStepIds] = useState<Set<string>>(() => new Set())
   const [draftInvalidated, setDraftInvalidated] = useState(false)
+  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
   const generationControllerRef = useRef<AbortController | null>(null)
   const downloadControllerRef = useRef<AbortController | null>(null)
   const generationDialogOpenRef = useRef(false)
@@ -99,53 +93,26 @@ export default function ProcessingPlanPage() {
   }, [])
 
   useEffect(() => {
-    setFilter('ALL')
     setSelectedStepId(settings?.requireStepConfirmation
       ? currentPlan?.steps[0]?.stepId
       : undefined)
     setGenerationError(null)
     setDownloadError(null)
-    setEditorDirty(false)
-    setListenedStepIds(new Set())
+    setConfirmationDialogOpen(false)
+    setStartError(null)
   }, [currentPlan?.planId, currentPlan?.generatedAt, settings?.requireStepConfirmation])
 
   const orderedSteps = useMemo(() => (
     currentPlan ? [...currentPlan.steps].sort((first, second) => first.stepOrder - second.stepOrder) : []
   ), [currentPlan])
-  const filteredSteps = useMemo(
-    () => orderedSteps.filter((step) => matchesFilter(step, filter)),
-    [filter, orderedSteps],
-  )
-  const selectedStep = filteredSteps.find((step) => step.stepId === selectedStepId)
-    || (settings?.requireStepConfirmation ? filteredSteps[0] : undefined)
+  const selectedStep = orderedSteps.find((step) => step.stepId === selectedStepId)
+    || (settings?.requireStepConfirmation ? orderedSteps[0] : undefined)
 
   useEffect(() => {
     if (selectedStep && selectedStep.stepId !== selectedStepId) {
       setSelectedStepId(selectedStep.stepId)
     }
   }, [selectedStep, selectedStepId])
-
-  const selectedConfirmationStep = selectedStep
-    ? confirmationState.confirmation?.steps.find((step) => step.sourceStepId === selectedStep.stepId)
-    : undefined
-
-  const changeWithDirtyGuard = (action: () => void) => {
-    if (!editorDirty) {
-      action()
-      return
-    }
-    modal.confirm({
-      title: '当前步骤有修改尚未保存',
-      content: '继续切换将丢弃当前步骤尚未保存的修改。',
-      okText: '放弃修改并切换',
-      cancelText: '返回保存',
-      centered: true,
-      onOk: () => {
-        setEditorDirty(false)
-        action()
-      },
-    })
-  }
 
   const requestGeneration = (regenerate: boolean) => {
     if (!validTaskId || generationDialogOpenRef.current || generationLockedRef.current) return
@@ -176,12 +143,11 @@ export default function ProcessingPlanPage() {
           const nextPlan = await generateProcessingPlan(validTaskId, controller.signal)
           if (!controller.signal.aborted) {
             if (hasDraft) setDraftInvalidated(true)
-            setEditorDirty(false)
             applyPlan(nextPlan)
           }
         } catch (requestError) {
           if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) {
-            setGenerationError(generationErrorMessage(requestError))
+            setGenerationError(getProcessingPlanErrorMessage(requestError, '处理方案生成失败，请稍后重试。'))
           }
         } finally {
           if (generationControllerRef.current === controller) {
@@ -236,9 +202,6 @@ export default function ProcessingPlanPage() {
     } else if (play && isWholeAudioOperation(step.operationType)) {
       void player.seekTo(0, { play: true })
     }
-    if (play) {
-      setListenedStepIds((previous) => new Set(previous).add(step.stepId))
-    }
   }
 
   const createConfirmation = async () => {
@@ -265,7 +228,7 @@ export default function ProcessingPlanPage() {
       return created
     } catch (requestError) {
       if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) {
-        setGenerationError(generationErrorMessage(requestError))
+        setGenerationError(getProcessingPlanErrorMessage(requestError, '处理方案生成失败，请稍后重试。'))
       }
       throw requestError
     } finally {
@@ -276,13 +239,50 @@ export default function ProcessingPlanPage() {
     }
   }
 
+  const startProcessing = async (note: string) => {
+    if (!currentPlan || starting) return
+    setStarting(true)
+    setStartError(null)
+    try {
+      let target = confirmationState.confirmation
+      if (!target) {
+        target = await createConfirmation()
+      } else if (target.confirmationStatus === 'STALE' || target.confirmationStatus === 'CANCELLED') {
+        target = await createLatestConfirmation(target.confirmationStatus)
+      }
+      if (!target) throw new Error('无法创建处理方案确认单')
+
+      const confirmed = target.confirmationStatus === 'CONFIRMED'
+        ? target
+        : await confirmationState.acceptAllAndConfirm(target, note)
+      if (!confirmed) throw new Error('处理方案确认失败')
+
+      try {
+        await createProcessingExecution(confirmed.confirmationId)
+      } catch (executionError) {
+        if (!(executionError instanceof ApiError
+          && executionError.code === PROCESSING_EXECUTION_ALREADY_EXISTS_CODE)) {
+          throw executionError
+        }
+      }
+      setConfirmationDialogOpen(false)
+      navigate(`/analysis/tasks/${encodeURIComponent(confirmed.taskId)}/processing-execution`)
+    } catch (actionError) {
+      setStartError(actionError instanceof ApiError
+        ? getProcessingConfirmationErrorMessage(actionError)
+        : getProcessingExecutionErrorMessage(actionError))
+    } finally {
+      setStarting(false)
+    }
+  }
+
   if (!validTaskId) {
     return (
       <PageContainer>
         <PageTitle
           eyebrow="PROCESSING PLAN"
           title="处理方案"
-          description="根据检测结果整理的片段级处理建议，当前不会自动修改原始音频。"
+          description="统一展示、调整并确认处理步骤，当前不会自动修改原始音频。"
         />
         <Alert
           type="error"
@@ -301,21 +301,24 @@ export default function ProcessingPlanPage() {
       <PageTitle
         eyebrow="PROCESSING PLAN"
         title="处理方案"
-        description="根据检测结果整理的片段级处理建议，当前不会自动修改原始音频。"
+        description="确认后将直接开始处理。"
         actions={(
           <>
-            <Link to={`/analysis/tasks/${encodeURIComponent(validTaskId)}/report`}>
-              <Button icon={<ArrowLeftOutlined />}>返回分析报告</Button>
-            </Link>
-            {currentPlan && (
+            <Link to={backPath}><Button icon={<ArrowLeftOutlined />}>{backLabel}</Button></Link>
+            {currentPlan
+              && currentPlan.steps.length > 0
+              && confirmationState.confirmation?.confirmationStatus !== 'CONFIRMED' && (
               <Button
                 type="primary"
-                icon={<ReloadOutlined />}
-                loading={generating}
-                disabled={refreshing}
-                onClick={() => requestGeneration(true)}
+                icon={<CheckCircleOutlined />}
+                loading={confirmationState.loading || confirmationState.creating || starting}
+                disabled={currentPlan.planStatus === 'INVALID' || refreshing || starting}
+                onClick={() => {
+                  setStartError(null)
+                  setConfirmationDialogOpen(true)
+                }}
               >
-                重新生成
+                确认处理方案
               </Button>
             )}
           </>
@@ -341,14 +344,47 @@ export default function ProcessingPlanPage() {
           generating={generating}
           onRetry={reload}
           onGenerate={() => requestGeneration(false)}
+          allowGenerate={planSource === 'diagnosis'}
+          backPath={backPath}
+          backLabel={backLabel}
         />
       )}
 
       {currentPlan && (
         <div className="processing-plan-content">
+          <ProcessingPlanConfirmationModal
+            open={confirmationDialogOpen}
+            audioName={player.playback?.fileName || `音频文件 ${compactId(currentPlan.audioFileId)}`}
+            plan={currentPlan}
+            starting={starting}
+            error={startError}
+            onCancel={() => setConfirmationDialogOpen(false)}
+            onStart={startProcessing}
+          />
+          <nav className="processing-plan-flow" aria-label="处理流程">
+            <ol>
+              {[
+                planSource === 'diagnosis' ? '诊断完成' : '方案已生成',
+                '方案确认',
+                '音频处理',
+                '处理完成',
+              ].map((label, index) => {
+                const confirmed = confirmationState.confirmation?.confirmationStatus === 'CONFIRMED'
+                const currentIndex = confirmed ? 2 : 1
+                const state = index < currentIndex ? 'is-complete' : index === currentIndex ? 'is-current' : 'is-upcoming'
+                return (
+                  <li key={label} className={state} aria-current={index === currentIndex ? 'step' : undefined}>
+                    <span>{index + 1}</span>
+                    <strong>{label}</strong>
+                  </li>
+                )
+              })}
+            </ol>
+          </nav>
+
           <header className="processing-plan-meta processing-plan-reveal">
             <div className="processing-plan-meta__file">
-              <span>分析文件</span>
+              <span>音频名称</span>
               <Tooltip title={player.playback?.fileName || undefined}>
                 <strong>
                   {player.playback?.fileName
@@ -357,15 +393,9 @@ export default function ProcessingPlanPage() {
               </Tooltip>
             </div>
             <dl>
-              <div><dt>方案状态</dt><dd>{getPlanStatusLabel(currentPlan.planStatus)}</dd></div>
-              <div><dt>生成时间</dt><dd>{formatDateTime(currentPlan.generatedAt || undefined)}</dd></div>
               <div>
-                <dt>方案 ID</dt>
-                <dd>
-                  <Typography.Text copyable={{ text: currentPlan.planId, icon: <CopyOutlined />, tooltips: ['复制方案 ID', '已复制'] }}>
-                    {compactId(currentPlan.planId)}
-                  </Typography.Text>
-                </dd>
+                <dt>时长</dt>
+                <dd>{formatDuration(player.durationSeconds > 0 ? player.durationSeconds * 1000 : null)}</dd>
               </div>
             </dl>
           </header>
@@ -437,28 +467,6 @@ export default function ProcessingPlanPage() {
             />
           </div>
 
-          {confirmationState.confirmation && (
-            <ConfirmationSummary confirmation={confirmationState.confirmation} />
-          )}
-
-          {!confirmationState.error
-            && (confirmationState.notFound || confirmationState.loading)
-            && !confirmationState.confirmation && (
-              <ConfirmationActions
-                confirmation={null}
-                loading={confirmationState.loading}
-                creating={confirmationState.creating}
-                confirming={confirmationState.confirming}
-                cancelling={confirmationState.cancelling}
-                saving={confirmationState.savingStepIds.size > 0}
-                dirty={editorDirty}
-                onCreate={createConfirmation}
-                onCreateLatest={createLatestConfirmation}
-                onConfirm={confirmationState.confirm}
-                onCancel={confirmationState.cancel}
-              />
-          )}
-
           {orderedSteps.length === 0 ? (
             <section className="processing-plan-empty processing-plan-reveal">
               <EmptyState
@@ -466,8 +474,8 @@ export default function ProcessingPlanPage() {
                 description="当前方案没有建议步骤，你可以返回分析报告核对结果，或重新生成处理方案。"
                 action={(
                   <div className="processing-plan-empty__actions">
-                    <Link to={`/analysis/tasks/${encodeURIComponent(validTaskId)}/report`}><Button>返回分析报告</Button></Link>
-                    <Button type="primary" loading={generating} onClick={() => requestGeneration(true)}>重新生成处理方案</Button>
+                    <Link to={backPath}><Button>{backLabel}</Button></Link>
+                    {planSource === 'diagnosis' && <Button type="primary" loading={generating} onClick={() => requestGeneration(true)}>重新生成处理方案</Button>}
                   </div>
                 )}
               />
@@ -476,74 +484,29 @@ export default function ProcessingPlanPage() {
             <section className="processing-plan-steps processing-plan-reveal" aria-labelledby="processing-plan-steps-title">
               <div className="processing-plan-section-heading processing-plan-steps__heading">
                 <div>
-                  <span>RECOMMENDED STEPS</span>
                   <h2 id="processing-plan-steps-title">建议处理步骤</h2>
-                  <p>{settings?.requireStepConfirmation
-                    ? '已按你的偏好展开首个步骤；片段建议可直接定位或试听。'
-                    : '选择步骤后查看原因和参数；提交前仍必须完成最终人工确认。'}</p>
                 </div>
-                <PlanFilters
-                  value={filter}
-                  onChange={(nextFilter) => changeWithDirtyGuard(() => setFilter(nextFilter))}
-                />
               </div>
 
-              {filteredSteps.length === 0 ? (
-                <div className="processing-plan-filter-empty">
-                  <strong>当前筛选条件下没有步骤</strong>
-                  <span>可以切换到“全部”继续查看完整处理方案。</span>
-                  <Button onClick={() => setFilter('ALL')}>显示全部步骤</Button>
-                </div>
-              ) : (
-                <div className="processing-plan-workspace">
-                  <ProcessingStepList
-                    steps={filteredSteps}
-                    confirmationSteps={confirmationState.confirmation?.steps}
-                    selectedStepId={selectedStep?.stepId}
-                    onSelect={(step) => changeWithDirtyGuard(() => setSelectedStepId(step.stepId))}
+              <div className="processing-plan-workspace">
+                <ProcessingStepList
+                  steps={orderedSteps}
+                  selectedStepId={selectedStep?.stepId}
+                  onSelect={(step) => setSelectedStepId(step.stepId)}
+                />
+                {selectedStep && (
+                  <ProcessingStepDetail
+                    key={selectedStep.stepId}
+                    taskId={validTaskId}
+                    step={selectedStep}
+                    onLocate={(step) => locateStep(step, false)}
+                    onPreview={(step) => locateStep(step, true)}
                   />
-                  {selectedStep && (
-                    <ProcessingStepDetail
-                      key={selectedStep.stepId}
-                      taskId={validTaskId}
-                      step={selectedStep}
-                      confirmationStep={selectedConfirmationStep}
-                      confirmationReadOnly={confirmationState.confirmation?.confirmationStatus !== 'DRAFT'}
-                      confirmationSaving={selectedConfirmationStep
-                        ? confirmationState.savingStepIds.has(selectedConfirmationStep.stepConfirmationId)
-                        : false}
-                      listened={listenedStepIds.has(selectedStep.stepId)}
-                      onLocate={(step) => locateStep(step, false)}
-                      onPreview={(step) => locateStep(step, true)}
-                      onDirtyChange={setEditorDirty}
-                      onSaveConfirmationStep={selectedConfirmationStep
-                        ? (payload) => confirmationState.updateStep(
-                          selectedConfirmationStep.stepConfirmationId,
-                          payload,
-                        )
-                        : undefined}
-                    />
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </section>
           )}
 
-          {confirmationState.confirmation && (
-            <ConfirmationActions
-              confirmation={confirmationState.confirmation}
-              loading={confirmationState.loading}
-              creating={confirmationState.creating || generating}
-              confirming={confirmationState.confirming}
-              cancelling={confirmationState.cancelling}
-              saving={confirmationState.savingStepIds.size > 0}
-              dirty={editorDirty}
-              onCreate={createConfirmation}
-              onCreateLatest={createLatestConfirmation}
-              onConfirm={confirmationState.confirm}
-              onCancel={confirmationState.cancel}
-            />
-          )}
           {confirmationState.confirmation?.confirmationStatus === 'CONFIRMED' && (
             <ProcessingExecutionEntry
               confirmation={confirmationState.confirmation}

@@ -28,6 +28,7 @@ export interface MultipartUploadInitResult {
   uploadId?: string
   status: MultipartUploadStatus
   instantUpload: boolean
+  resumed: boolean
   chunkSize: number
   totalChunks: number
   uploadedChunks: number[]

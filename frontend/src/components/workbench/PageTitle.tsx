@@ -9,7 +9,7 @@ interface PageTitleProps {
 
 export default function PageTitle({ title, description, eyebrow, actions }: PageTitleProps) {
   return (
-    <section className="workbench-page-title">
+    <section className={`workbench-page-title${description ? '' : ' workbench-page-title--compact'}`}>
       <div>
         {eyebrow && <span>{eyebrow}</span>}
         <h2>{title}</h2>
@@ -19,4 +19,3 @@ export default function PageTitle({ title, description, eyebrow, actions }: Page
     </section>
   )
 }
-

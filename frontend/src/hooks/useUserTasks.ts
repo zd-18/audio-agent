@@ -12,7 +12,7 @@ const EMPTY_PAGE: PageResult<UserTaskProgress> = {
   pages: 0,
 }
 
-export function useUserTasks() {
+export function useUserTasks(size = 100) {
   const [data, setData] = useState(EMPTY_PAGE)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -34,7 +34,7 @@ export function useUserTasks() {
       if (background) setRefreshing(true)
       else setLoading(true)
       try {
-        const page = await getUserTasks(1, 100, controller.signal)
+        const page = await getUserTasks(1, size, controller.signal)
         if (disposed) return
         setData(page)
         setError(null)
@@ -59,7 +59,7 @@ export function useUserTasks() {
       controller?.abort()
       if (timer) window.clearTimeout(timer)
     }
-  }, [version])
+  }, [size, version])
 
   return { data, loading, refreshing, error, refresh }
 }

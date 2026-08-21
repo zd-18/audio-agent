@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { generateProcessingPlan, getProcessingPlan } from '../../api/processingPlan'
 import { ApiError } from '../../api/http'
 import type { AnalysisTaskStatus } from '../../types/api'
+import { getProcessingPlanErrorMessage } from '../../utils/processingPlanDisplay'
 
 const PROCESSING_PLAN_NOT_FOUND_CODE = 40209
 
@@ -15,15 +16,6 @@ interface ProcessingPlanAccessButtonProps {
   taskId: string
   status: AnalysisTaskStatus
   type?: ButtonProps['type']
-}
-
-function generationErrorMessage(error: unknown) {
-  if (error instanceof ApiError) {
-    if (error.code === 40210) return '分析结果尚未准备完成，暂时无法生成处理方案。'
-    if (error.code === 40101) return '未找到对应分析任务。'
-    return error.message || '处理方案生成失败，请稍后重试。'
-  }
-  return error instanceof Error ? error.message : '处理方案生成失败，请稍后重试。'
 }
 
 export default function ProcessingPlanAccessButton({
@@ -64,7 +56,7 @@ export default function ProcessingPlanAccessButton({
 
   useEffect(() => () => generateControllerRef.current?.abort(), [])
 
-  const planPath = `/analysis/tasks/${encodeURIComponent(taskId)}/processing-plan`
+  const planPath = `/analysis/tasks/${encodeURIComponent(taskId)}/processing-plan?source=diagnosis`
   const disabledReason = status === 'FAILED'
     ? '本次分析未完成，暂时无法生成处理方案。'
     : status === 'PENDING' || status === 'PROCESSING'
@@ -75,9 +67,9 @@ export default function ProcessingPlanAccessButton({
     if (generationDialogOpenRef.current || generationLockedRef.current) return
     generationDialogOpenRef.current = true
     modal.confirm({
-      title: '生成处理方案',
-      content: '系统将根据当前分析报告生成建议步骤，不会直接修改原始音频。',
-      okText: '确认生成',
+      title: '按推荐方案处理',
+      content: '系统将把本次智能诊断的推荐步骤带入统一处理方案，进入确认页后仍可调整参数，不会直接修改原始音频。',
+      okText: '生成并查看方案',
       cancelText: '取消',
       centered: true,
       afterClose: () => {
@@ -97,7 +89,7 @@ export default function ProcessingPlanAccessButton({
           if (!(error instanceof DOMException && error.name === 'AbortError')) {
             modal.error({
               title: '处理方案生成失败',
-              content: generationErrorMessage(error),
+              content: getProcessingPlanErrorMessage(error, '处理方案生成失败，请稍后重试。'),
               centered: true,
             })
           }
@@ -117,13 +109,6 @@ export default function ProcessingPlanAccessButton({
     else navigate(planPath)
   }
 
-  const label = availability === 'missing'
-    ? '生成处理方案'
-    : availability === 'exists'
-      ? '查看处理方案'
-      : availability === 'checking'
-        ? '检查处理方案'
-        : '打开处理方案'
   const lookupHint = availability === 'unknown'
     ? '暂时无法确认方案状态，可进入处理方案页重试。报告内容不受影响。'
     : disabledReason
@@ -136,7 +121,7 @@ export default function ProcessingPlanAccessButton({
       loading={availability === 'checking' || generating}
       onClick={openOrGenerate}
     >
-      {label}
+      按推荐方案处理
     </Button>
   )
 

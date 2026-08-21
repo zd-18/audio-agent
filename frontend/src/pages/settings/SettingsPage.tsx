@@ -1,12 +1,9 @@
 import {
-  AudioOutlined,
   BellOutlined,
   LockOutlined,
   LogoutOutlined,
   SaveOutlined,
   SettingOutlined,
-  SoundOutlined,
-  UserOutlined,
 } from '@ant-design/icons'
 import {
   Alert,
@@ -14,11 +11,8 @@ import {
   Button,
   Form,
   Input,
-  InputNumber,
   Radio,
-  Select,
   Skeleton,
-  Slider,
   Switch,
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
@@ -26,16 +20,60 @@ import { useNavigate } from 'react-router-dom'
 import { updateCurrentUserProfile } from '../../api/settings'
 import { useAuth } from '../../auth/AuthContext'
 import ChangePasswordModal from '../../components/settings/ChangePasswordModal'
+import UsernameAvatar from '../../components/user/UsernameAvatar'
 import PageContainer from '../../components/workbench/PageContainer'
 import PageTitle from '../../components/workbench/PageTitle'
 import { useUserSettings } from '../../settings/UserSettingsContext'
 import type { UpdateUserSettingPayload, UserSetting } from '../../types/settings'
 import './settings.css'
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50].map((value) => ({ value, label: `${value} 条 / 页` }))
+type ProcessingMode = 'LIGHT' | 'BALANCED' | 'DEEP'
+type SettingsFormValues = {
+  defaultProcessingMode: ProcessingMode
+  notifyOnTaskComplete: boolean
+}
 
-function sameSettings(left: UserSetting | null, right: UpdateUserSettingPayload | null) {
-  return Boolean(left && right && JSON.stringify(left) === JSON.stringify(right))
+const DEFAULT_PROCESSING_MODE: ProcessingMode = 'BALANCED'
+const PROCESSING_MODE_OPTIONS = [
+  { label: '轻度优化', value: 'LIGHT' },
+  { label: '平衡优化', value: 'BALANCED' },
+  { label: '深度优化', value: 'DEEP' },
+]
+
+function processingModeStorageKey(userId?: number | string) {
+  return `audioagent:processing-mode:${userId ?? 'current'}`
+}
+
+function readProcessingMode(userId?: number | string): ProcessingMode {
+  const stored = window.localStorage.getItem(processingModeStorageKey(userId))
+  return stored === 'LIGHT' || stored === 'BALANCED' || stored === 'DEEP'
+    ? stored
+    : DEFAULT_PROCESSING_MODE
+}
+
+function applyProcessingMode(settings: UserSetting, mode: ProcessingMode): UserSetting {
+  if (mode === 'LIGHT') {
+    return {
+      ...settings,
+      defaultDenoiseStrength: 'LIGHT',
+      processingStrategy: 'CONSERVATIVE',
+      autoLimitPeak: false,
+    }
+  }
+  if (mode === 'DEEP') {
+    return {
+      ...settings,
+      defaultDenoiseStrength: 'MEDIUM',
+      processingStrategy: 'BALANCED',
+      autoLimitPeak: true,
+    }
+  }
+  return {
+    ...settings,
+    defaultDenoiseStrength: 'LIGHT',
+    processingStrategy: 'BALANCED',
+    autoLimitPeak: true,
+  }
 }
 
 function useUnsavedChanges(enabled: boolean) {
@@ -68,18 +106,15 @@ function useUnsavedChanges(enabled: boolean) {
 
 function SettingRow({
   title,
-  description,
   children,
 }: {
   title: string
-  description: string
   children: React.ReactNode
 }) {
   return (
     <div className="settings-row">
       <div className="settings-row__copy">
         <strong>{title}</strong>
-        <span>{description}</span>
       </div>
       <div className="settings-row__control">{children}</div>
     </div>
@@ -91,35 +126,58 @@ export default function SettingsPage() {
   const { message, modal } = App.useApp()
   const { currentUser, updateCurrentUser, logout } = useAuth()
   const { settings, loading, saving, error, refresh, save } = useUserSettings()
-  const [form] = Form.useForm<UpdateUserSettingPayload>()
-  const watchedValues = Form.useWatch([], form) as UpdateUserSettingPayload | undefined
+  const [form] = Form.useForm<SettingsFormValues>()
+  const watchedValues = Form.useWatch([], form) as SettingsFormValues | undefined
+  const [savedProcessingMode, setSavedProcessingMode] = useState<ProcessingMode>(DEFAULT_PROCESSING_MODE)
   const [profileName, setProfileName] = useState(currentUser?.displayName || '')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [passwordOpen, setPasswordOpen] = useState(false)
 
   useEffect(() => {
-    if (settings) form.setFieldsValue(settings)
-  }, [form, settings])
+    if (!settings) return
+    const mode = readProcessingMode(currentUser?.id)
+    setSavedProcessingMode(mode)
+    form.setFieldsValue({
+      defaultProcessingMode: mode,
+      notifyOnTaskComplete: settings.notifyOnTaskComplete,
+    })
+  }, [currentUser?.id, form, settings])
 
   useEffect(() => {
     setProfileName(currentUser?.displayName || '')
   }, [currentUser?.displayName, currentUser?.id])
 
   const preferencesDirty = useMemo(
-    () => Boolean(watchedValues && !sameSettings(settings, watchedValues)),
-    [settings, watchedValues],
+    () => Boolean(settings && watchedValues && (
+      watchedValues.defaultProcessingMode !== savedProcessingMode
+      || watchedValues.notifyOnTaskComplete !== settings.notifyOnTaskComplete
+    )),
+    [savedProcessingMode, settings, watchedValues],
   )
   const normalizedProfileName = profileName.trim()
   const profileDirty = normalizedProfileName !== (currentUser?.displayName || '')
   useUnsavedChanges(preferencesDirty || profileDirty)
 
   const savePreferences = async () => {
+    if (!settings) return
     try {
       const values = await form.validateFields()
-      const saved = await save(values)
-      form.setFieldsValue(saved)
-      message.success('系统设置已保存并立即生效')
+      const payload: UpdateUserSettingPayload = {
+        ...applyProcessingMode(settings, values.defaultProcessingMode),
+        notifyOnTaskComplete: values.notifyOnTaskComplete,
+      }
+      const saved = await save(payload)
+      window.localStorage.setItem(
+        processingModeStorageKey(currentUser?.id),
+        values.defaultProcessingMode,
+      )
+      setSavedProcessingMode(values.defaultProcessingMode)
+      form.setFieldsValue({
+        defaultProcessingMode: values.defaultProcessingMode,
+        notifyOnTaskComplete: saved.notifyOnTaskComplete,
+      })
+      message.success('偏好设置已保存', 2)
     } catch (cause) {
       if (cause instanceof Error) message.error(cause.message)
     }
@@ -169,9 +227,9 @@ export default function SettingsPage() {
   if (loading && !settings) {
     return (
       <PageContainer>
-        <PageTitle eyebrow="PERSONAL PREFERENCES" title="系统设置" description="管理当前账号的音频处理、播放和工作台偏好。" />
+        <PageTitle title="系统设置" />
         <div className="settings-skeleton" aria-label="正在加载系统设置">
-          {[0, 1, 2, 3].map((item) => <section key={item}><Skeleton active paragraph={{ rows: 3 }} /></section>)}
+          {[0, 1, 2].map((item) => <section key={item}><Skeleton active paragraph={{ rows: 2 }} /></section>)}
         </div>
       </PageContainer>
     )
@@ -180,7 +238,7 @@ export default function SettingsPage() {
   if (!settings) {
     return (
       <PageContainer>
-        <PageTitle eyebrow="PERSONAL PREFERENCES" title="系统设置" description="管理当前账号的音频处理、播放和工作台偏好。" />
+        <PageTitle title="系统设置" />
         <Alert type="error" showIcon message="系统设置加载失败" description={error || '暂时无法读取当前账号的设置'} action={<Button onClick={refresh}>重新加载</Button>} />
       </PageContainer>
     )
@@ -189,9 +247,7 @@ export default function SettingsPage() {
   return (
     <PageContainer>
       <PageTitle
-        eyebrow="PERSONAL PREFERENCES"
         title="系统设置"
-        description="所有偏好仅作用于当前账号；保存后无需重新登录即可生效。"
         actions={(
           <Button
             type="primary"
@@ -211,19 +267,17 @@ export default function SettingsPage() {
       <div className="settings-grid">
         <section className="settings-card settings-card--account" aria-labelledby="settings-account-title">
           <header className="settings-card__header">
-            <span className="settings-card__icon"><UserOutlined /></span>
-            <div><small>ACCOUNT</small><h2 id="settings-account-title">账号信息</h2><p>管理公开显示信息与登录安全。</p></div>
+            <UsernameAvatar username={currentUser?.username} size={44} />
+            <h2 id="settings-account-title">账号信息</h2>
           </header>
           <div className="settings-account-fields">
             <label>
               <span>用户名</span>
               <Input value={currentUser?.username || ''} readOnly aria-readonly="true" />
-              <small>用户名用于登录，当前不可修改。</small>
             </label>
             <label>
               <span>显示名称</span>
               <Input value={profileName} maxLength={50} showCount onChange={(event) => { setProfileName(event.target.value); setProfileError(null) }} />
-              <small>保存后工作台右上角会立即更新。</small>
             </label>
             {profileError && <Alert type="error" showIcon message={profileError} />}
             <div className="settings-account-actions">
@@ -234,72 +288,46 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <Form form={form} component={false} initialValues={settings}>
+        <Form
+          form={form}
+          component={false}
+          initialValues={{
+            defaultProcessingMode: DEFAULT_PROCESSING_MODE,
+            notifyOnTaskComplete: settings.notifyOnTaskComplete,
+          }}
+        >
           <section className="settings-card" aria-labelledby="settings-processing-title">
             <header className="settings-card__header">
               <span className="settings-card__icon is-purple"><SettingOutlined /></span>
-              <div><small>PROCESSING</small><h2 id="settings-processing-title">音频处理偏好</h2><p>这些选项只影响之后新生成的处理方案。</p></div>
+              <h2 id="settings-processing-title">音频处理偏好</h2>
             </header>
-            <SettingRow title="默认降噪强度" description="噪声规则未明确要求更强处理时采用。">
-              <Form.Item name="defaultDenoiseStrength" noStyle rules={[{ required: true }]}>
-                <Radio.Group buttonStyle="solid" options={[{ label: '轻度', value: 'LIGHT' }, { label: '中度', value: 'MEDIUM' }]} optionType="button" />
-              </Form.Item>
-            </SettingRow>
-            <SettingRow title="处理策略" description="保守策略优先保留原始特征；均衡策略在证据充分时允许中度处理。">
-              <Form.Item name="processingStrategy" noStyle rules={[{ required: true }]}>
-                <Radio.Group buttonStyle="solid" options={[{ label: '保守', value: 'CONSERVATIVE' }, { label: '均衡', value: 'BALANCED' }]} optionType="button" />
-              </Form.Item>
-            </SettingRow>
-            <SettingRow title="自动限制峰值" description="检测到峰值风险时默认加入 LIMIT_PEAK 建议，仍需人工确认。">
-              <Form.Item name="autoLimitPeak" valuePropName="checked" noStyle><Switch aria-label="自动限制峰值" /></Form.Item>
-            </SettingRow>
-            <SettingRow title="默认展开步骤确认" description="关闭后方案页不自动展开首个步骤；最终确认永远不会被跳过。">
-              <Form.Item name="requireStepConfirmation" valuePropName="checked" noStyle><Switch aria-label="默认展开步骤确认" /></Form.Item>
-            </SettingRow>
-          </section>
-
-          <section className="settings-card" aria-labelledby="settings-playback-title">
-            <header className="settings-card__header">
-              <span className="settings-card__icon is-cyan"><SoundOutlined /></span>
-              <div><small>PLAYBACK</small><h2 id="settings-playback-title">播放与试听</h2><p>控制 AudioAgent 内的播放器，不影响其他网站。</p></div>
-            </header>
-            <SettingRow title="保持播放位置" description="在原音频和处理结果之间切换时保持同一时间点。">
-              <Form.Item name="preservePlaybackPosition" valuePropName="checked" noStyle><Switch aria-label="切换音频时保持播放位置" /></Form.Item>
-            </SettingRow>
-            <SettingRow title="问题片段上下文" description="试听时在问题片段前后额外播放的秒数。">
-              <Form.Item name="issueContextSeconds" noStyle rules={[{ required: true }, { type: 'number', min: 0, max: 10, message: '请输入 0～10 秒' }]}>
-                <InputNumber min={0} max={10} precision={0} addonAfter="秒" aria-label="问题片段上下文秒数" />
-              </Form.Item>
-            </SettingRow>
-            <SettingRow title="默认播放音量" description="新播放器初始化时使用，可在播放器内临时调整。">
-              <Form.Item name="defaultPlaybackVolume" noStyle rules={[{ required: true }]}>
-                <Slider min={0} max={1} step={0.05} tooltip={{ formatter: (value) => `${Math.round((value || 0) * 100)}%` }} aria-label="默认播放音量" />
+            <SettingRow title="默认处理模式">
+              <Form.Item name="defaultProcessingMode" noStyle rules={[{ required: true }]}>
+                <Radio.Group
+                  className="settings-mode-group"
+                  buttonStyle="solid"
+                  options={PROCESSING_MODE_OPTIONS}
+                  optionType="button"
+                  aria-label="默认处理模式"
+                />
               </Form.Item>
             </SettingRow>
           </section>
 
-          <section className="settings-card" aria-labelledby="settings-workbench-title">
+          <section className="settings-card" aria-labelledby="settings-notification-title">
             <header className="settings-card__header">
               <span className="settings-card__icon is-blue"><BellOutlined /></span>
-              <div><small>WORKBENCH</small><h2 id="settings-workbench-title">工作台偏好</h2><p>调整列表密度、完成提醒和结果定位方式。</p></div>
+              <h2 id="settings-notification-title">通知设置</h2>
             </header>
-            <SettingRow title="默认分页数量" description="仅决定文件、分析任务和处理任务列表的初始每页数量。">
-              <Form.Item name="defaultPageSize" noStyle rules={[{ required: true }]}>
-                <Select options={PAGE_SIZE_OPTIONS} aria-label="默认分页数量" />
-              </Form.Item>
-            </SettingRow>
-            <SettingRow title="任务完成提示" description="仅在本次页面会话观察到任务进入成功或失败时提示一次。">
-              <Form.Item name="notifyOnTaskComplete" valuePropName="checked" noStyle><Switch aria-label="任务完成提示" /></Form.Item>
-            </SettingRow>
-            <SettingRow title="成功后定位结果" description="停留在处理进度页时，成功后自动滚动到结果区域。">
-              <Form.Item name="autoOpenResultPage" valuePropName="checked" noStyle><Switch aria-label="处理成功后自动定位结果" /></Form.Item>
+            <SettingRow title="任务完成提醒">
+              <Form.Item name="notifyOnTaskComplete" valuePropName="checked" noStyle><Switch aria-label="任务完成提醒" /></Form.Item>
             </SettingRow>
           </section>
         </Form>
       </div>
 
       <footer className="settings-save-bar" aria-live="polite">
-        <div><AudioOutlined /><span>{preferencesDirty ? '偏好设置有未保存修改' : '偏好设置已与服务器同步'}</span></div>
+        {preferencesDirty && <span>偏好设置有未保存修改</span>}
         <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!preferencesDirty || saving} onClick={() => { void savePreferences() }}>保存偏好设置</Button>
       </footer>
 

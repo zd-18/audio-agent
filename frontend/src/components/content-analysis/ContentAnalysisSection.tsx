@@ -239,26 +239,22 @@ export default function ContentAnalysisSection({
   }, [analysis.result])
 
   return (
-    <section className="workbench-panel content-analysis" aria-labelledby="content-analysis-title">
-      <div className="workbench-panel__heading">
-        <div>
-          <span>DEEPSEEK CONTENT ANALYSIS</span>
-          <h3 id="content-analysis-title">智能分析</h3>
-        </div>
+    <section className="content-analysis" aria-label="智能分析">
+      <div className="content-analysis-toolbar">
+        <p className="content-analysis-intro">
+          基于当前文字稿生成摘要、关键观点、章节和表达建议。
+        </p>
+        {analysis.result && (
         <Button
-          type="primary"
           icon={<BulbOutlined />}
           loading={analysis.creating}
           disabled={analysis.creating || active || analysis.task?.status === 'FAILED'}
           onClick={() => setConfirmOpen(true)}
         >
-          {analysis.result ? '重新分析' : '开始智能分析'}
+          重新分析
         </Button>
+        )}
       </div>
-
-      <p className="content-analysis-intro">
-        基于当前文字稿生成摘要、关键观点、章节和表达建议。原始音频不会发送给外部 AI 模型。
-      </p>
 
       {analysis.error && (
         <Alert
@@ -315,19 +311,20 @@ export default function ContentAnalysisSection({
 
       {analysis.result && (
         <div className="content-analysis-result">
-          <div className="content-analysis-result__meta">
-            <span>模型 {analysis.result.modelName}</span>
-            <span>Token {analysis.result.usage.totalTokens ?? 0}</span>
-          </div>
           <Tabs items={tabs} />
         </div>
       )}
 
       {!analysis.task && !analysis.loading && (
-        <div className="content-analysis-empty">
+        <div className="content-analysis-empty content-analysis-empty--prompt">
           <BulbOutlined />
-          <strong>尚未生成智能分析报告</strong>
-          <span>确认后只会发送文字稿内容，不会上传原始音频。</span>
+          <div>
+            <strong>尚未生成智能分析</strong>
+            <span>生成摘要、关键观点、章节和表达建议。</span>
+          </div>
+          <Button type="primary" icon={<BulbOutlined />} aria-label="生成智能分析" onClick={() => setConfirmOpen(true)}>
+            生成智能分析
+          </Button>
         </div>
       )}
 

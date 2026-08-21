@@ -47,6 +47,7 @@ export default function AnalysisReportPage() {
   const requestedIssueId = searchParams.get('issueId')
   const { report, relatedTask, error, loading, refreshing, refresh } = useAnalysisReport(validTaskId)
   const [highlightedIssueId, setHighlightedIssueId] = useState<string>()
+  const [timelineOpen, setTimelineOpen] = useState(Boolean(requestedIssueId))
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const downloadControllerRef = useRef<AbortController | null>(null)
@@ -58,6 +59,7 @@ export default function AnalysisReportPage() {
     downloadControllerRef.current?.abort()
     downloadControllerRef.current = null
     setHighlightedIssueId(undefined)
+    setTimelineOpen(Boolean(requestedIssueId))
     setDownloading(false)
     setDownloadError(null)
   }, [validTaskId])
@@ -76,6 +78,7 @@ export default function AnalysisReportPage() {
     if (!issueExists) return undefined
 
     setHighlightedIssueId(requestedIssueId)
+    setTimelineOpen(true)
     const frame = window.requestAnimationFrame(() => scrollToElement('report-issue-timeline'))
     return () => window.cancelAnimationFrame(frame)
   }, [report, requestedIssueId])
@@ -162,7 +165,7 @@ export default function AnalysisReportPage() {
   if (!validTaskId) {
     return (
       <PageContainer>
-        <PageTitle eyebrow="ANALYSIS REPORT" title="音频分析报告" description="对音频质量、问题片段和处理建议进行统一整理。" />
+        <PageTitle eyebrow="SMART DIAGNOSIS" title="智能诊断结果" />
         <Alert
           type="error"
           showIcon
@@ -177,9 +180,8 @@ export default function AnalysisReportPage() {
   return (
     <PageContainer>
       <PageTitle
-        eyebrow="ANALYSIS REPORT"
-        title="音频分析报告"
-        description="对音频质量、问题片段和处理建议进行统一整理。"
+        eyebrow="SMART DIAGNOSIS"
+        title="智能诊断结果"
         actions={(
           <>
             <Link to={`/analysis/tasks/${validTaskId}`}><Button icon={<ArrowLeftOutlined />}>返回任务详情</Button></Link>
@@ -246,28 +248,42 @@ export default function AnalysisReportPage() {
           />
 
           <QualityScorePanel report={report} />
-
-          <div className="report-overview-grid report-reveal-section">
-            <AudioOverviewPanel overview={report.audioOverview} />
-            <LoudnessOverviewPanel overview={report.loudnessOverview} />
-          </div>
-
           <IssueSummaryBar summary={report.issueSummary} />
-
-          <IssueTimeline
-            issues={report.timeline}
-            audioDurationMs={report.audioOverview.durationMs}
-            highlightedIssueId={highlightedIssueId}
-            currentTimeSeconds={player.currentTimeSeconds}
-            onLocateIssue={(issue) => seekToIssue(issue)}
-            onPreviewIssue={(issue) => seekToIssue(issue, true)}
-          />
-
           <KeyIssuesPanel
             issues={report.keyIssues}
             onLocate={(issue) => seekToIssue(issue)}
             onPreview={(issue) => seekToIssue(issue, true)}
           />
+
+          <section className="report-current-metrics report-reveal-section" aria-labelledby="report-current-metrics-title">
+            <div className="report-section-heading">
+              <div>
+                <span className="report-section-kicker">CURRENT METRICS</span>
+                <h2 id="report-current-metrics-title">当前指标</h2>
+              </div>
+            </div>
+            <div className="report-overview-grid">
+              <AudioOverviewPanel overview={report.audioOverview} />
+              <LoudnessOverviewPanel overview={report.loudnessOverview} />
+            </div>
+          </section>
+
+          <details
+            className="report-timeline-disclosure"
+            open={timelineOpen}
+            onToggle={(event) => setTimelineOpen(event.currentTarget.open)}
+          >
+            <summary>查看完整问题时间线</summary>
+            <IssueTimeline
+              issues={report.timeline}
+              audioDurationMs={report.audioOverview.durationMs}
+              highlightedIssueId={highlightedIssueId}
+              currentTimeSeconds={player.currentTimeSeconds}
+              onLocateIssue={(issue) => seekToIssue(issue)}
+              onPreviewIssue={(issue) => seekToIssue(issue, true)}
+            />
+          </details>
+
           <RecommendationList
             recommendations={report.recommendations}
             onLocate={(recommendation) => seekToRecommendation(recommendation)}

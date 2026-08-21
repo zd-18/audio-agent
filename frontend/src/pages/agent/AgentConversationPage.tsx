@@ -16,7 +16,6 @@ import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  confirmAgentProcessingWorkflow,
   createAgentConversation,
   getAgentConversations,
   getAgentMessages,
@@ -196,16 +195,12 @@ function AgentMessageItem({
   citationIsPlaying,
   onPlayCitation,
   workflow,
-  confirmingWorkflow,
-  onConfirmWorkflow,
 }: {
   message: DisplayAgentMessage
   activeCitationKey: string | null
   citationIsPlaying: boolean
   onPlayCitation: (messageId: string, citation: AgentCitation) => void
   workflow: AgentProcessingWorkflow | null
-  confirmingWorkflow: boolean
-  onConfirmWorkflow: (workflowId: string) => void
 }) {
   if (message.role === 'ASSISTANT' && message.status === 'FAILED') {
     return (
@@ -252,11 +247,7 @@ function AgentMessageItem({
           />
         )}
         {!isUser && workflow && (
-          <AgentProcessingWorkflowCard
-            workflow={workflow}
-            confirming={confirmingWorkflow}
-            onConfirm={onConfirmWorkflow}
-          />
+          <AgentProcessingWorkflowCard workflow={workflow} />
         )}
         <time dateTime={message.createdAt}>{formatDateTime(message.createdAt)}</time>
       </div>
@@ -302,7 +293,6 @@ export default function AgentConversationPage() {
     processingEntry ? 'PROCESSING' : 'CHAT',
   )
   const [workflows, setWorkflows] = useState<AgentProcessingWorkflow[]>([])
-  const [confirmingWorkflowId, setConfirmingWorkflowId] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [activeCitation, setActiveCitation] = useState<ActiveCitationPlayback | null>(null)
   const [conversationVersion, setConversationVersion] = useState(0)
@@ -311,7 +301,6 @@ export default function AgentConversationPage() {
   const createControllerRef = useRef<AbortController | null>(null)
   const sendControllerRef = useRef<AbortController | null>(null)
   const sendInFlightRef = useRef(false)
-  const confirmingWorkflowRef = useRef<string | null>(null)
   const mountedRef = useRef(true)
   const skipNextMessageLoadRef = useRef<string | null>(null)
   const messageEndRef = useRef<HTMLDivElement | null>(null)
@@ -340,7 +329,6 @@ export default function AgentConversationPage() {
     setProcessingError(null)
     setActiveCitation(null)
     setWorkflows([])
-    setConfirmingWorkflowId(null)
   }, [entryKey])
 
   useEffect(() => {
@@ -649,31 +637,6 @@ export default function AgentConversationPage() {
     }
   }, [conversationsLoading, createConversation, input, messagesLoading, requestMode, transcriptId, validAudioFileId])
 
-  const confirmWorkflow = useCallback(async (workflowId: string) => {
-    if (confirmingWorkflowRef.current !== null) return
-    confirmingWorkflowRef.current = workflowId
-    setConfirmingWorkflowId(workflowId)
-    setProcessingError(null)
-    try {
-      const updated = await confirmAgentProcessingWorkflow(workflowId)
-      if (!mountedRef.current) return
-      setWorkflows((current) => current.map((workflow) => (
-        workflow.workflowId === updated.workflowId ? updated : workflow
-      )))
-      void messageApi.success('已确认，开始处理音频')
-    } catch (error) {
-      if (!mountedRef.current) return
-      if (error instanceof ApiError && (error.status === 401
-        || [40501, 40504, 40507].includes(error.code ?? 0))) return
-      setProcessingError('音频处理未能启动，请稍后重试。')
-    } finally {
-      if (confirmingWorkflowRef.current === workflowId) {
-        confirmingWorkflowRef.current = null
-      }
-      if (mountedRef.current) setConfirmingWorkflowId(null)
-    }
-  }, [messageApi])
-
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
       event.key !== 'Enter'
@@ -847,11 +810,18 @@ export default function AgentConversationPage() {
               </div>
             </aside>
 
-            <section className="agent-chat-panel" aria-labelledby="agent-chat-title">
+            <section
+              className={`agent-chat-panel${processingEntry && !messagesLoading && messages.length === 0 && !messagesError
+                ? ' agent-chat-panel--processing-empty'
+                : ''}`}
+              aria-labelledby="agent-chat-title"
+            >
               <div className="agent-chat-panel__heading">
                 <div>
                   <span>ACTIVE CONVERSATION</span>
-                  <h3 id="agent-chat-title">{selectedConversation?.title || '开始新的对话'}</h3>
+                  <h3 id="agent-chat-title">
+                    {selectedConversation?.title || (processingEntry ? '开始处理这段音频' : '开始新的对话')}
+                  </h3>
                 </div>
                 <span className="agent-chat-panel__audio"><AudioOutlined /> {audioFile?.originalName || transcript?.audioFileName || task?.audioFileName}</span>
               </div>
@@ -878,7 +848,6 @@ export default function AgentConversationPage() {
                     {processingEntry ? (
                       <>
                         <h4>描述希望怎样处理这段音频</h4>
-                        <p>裁剪片段、降噪、压缩长静音、调整音量等都可以直接告诉 Agent，无需先转写。</p>
                         <div className="agent-recommendations" aria-label="推荐处理需求">
                           {RECOMMENDED_PROCESSING_REQUESTS.map((request) => (
                             <button key={request} type="button" onClick={() => setInput(request)}>{request}</button>
@@ -908,12 +877,6 @@ export default function AgentConversationPage() {
                     workflow={workflows.find((workflow) => (
                       workflow.assistantMessageId === agentMessage.messageId
                     )) ?? null}
-                    confirmingWorkflow={confirmingWorkflowId !== null
-                      && workflows.some((workflow) => (
-                        workflow.workflowId === confirmingWorkflowId
-                        && workflow.assistantMessageId === agentMessage.messageId
-                      ))}
-                    onConfirmWorkflow={confirmWorkflow}
                   />
                 ))}
                 <div ref={messageEndRef} aria-hidden="true" />
@@ -939,8 +902,13 @@ export default function AgentConversationPage() {
                     action={retryRequest ? <Button size="small" onClick={() => { void submitMessage(retryRequest) }}>使用原请求重试</Button> : undefined}
                   />
                 )}
-                <div className="agent-composer__mode" role="group" aria-label="Agent 请求类型">
-                  {!processingEntry && (
+                {processingEntry ? (
+                  <div className="agent-composer__heading">
+                    <strong>音频处理</strong>
+                    <label htmlFor="agent-question">描述你希望如何处理音频</label>
+                  </div>
+                ) : (
+                  <div className="agent-composer__mode" role="group" aria-label="Agent 请求类型">
                     <button
                       type="button"
                       className={requestMode === 'CHAT' ? 'is-active' : ''}
@@ -950,25 +918,27 @@ export default function AgentConversationPage() {
                     >
                       内容问答
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className={requestMode === 'PROCESSING' ? 'is-active' : ''}
-                    aria-pressed={requestMode === 'PROCESSING'}
-                    disabled={sending}
-                    onClick={() => setRequestMode('PROCESSING')}
-                  >
-                    音频处理
-                  </button>
-                </div>
-                <label htmlFor="agent-question">
-                  {requestMode === 'PROCESSING' ? '描述希望怎样处理音频' : '向 Agent 提问'}
-                </label>
+                    <button
+                      type="button"
+                      className={requestMode === 'PROCESSING' ? 'is-active' : ''}
+                      aria-pressed={requestMode === 'PROCESSING'}
+                      disabled={sending}
+                      onClick={() => setRequestMode('PROCESSING')}
+                    >
+                      音频处理
+                    </button>
+                  </div>
+                )}
+                {!processingEntry && (
+                  <label htmlFor="agent-question">
+                    {requestMode === 'PROCESSING' ? '描述希望怎样处理音频' : '向 Agent 提问'}
+                  </label>
+                )}
                 <div className="agent-composer__input-row">
                   <Input.TextArea
                     id="agent-question"
                     value={input}
-                    autoSize={{ minRows: 2, maxRows: 6 }}
+                    autoSize={{ minRows: 1, maxRows: 6 }}
                     maxLength={4000}
                     placeholder={requestMode === 'PROCESSING'
                       ? '例如：裁掉 00:10 到 00:15，并把整段音量调整得更均衡'
@@ -991,10 +961,7 @@ export default function AgentConversationPage() {
                     {sending ? (requestMode === 'PROCESSING' ? '规划中' : '分析中') : '发送'}
                   </Button>
                 </div>
-                <div className="agent-composer__hint">
-                  <span>Enter 发送 · Shift + Enter 换行</span>
-                  <span>{input.length}/4000</span>
-                </div>
+                <div className="agent-composer__count">{input.length} / 4000</div>
               </form>
             </section>
           </section>

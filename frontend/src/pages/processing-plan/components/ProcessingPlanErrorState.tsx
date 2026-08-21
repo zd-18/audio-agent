@@ -13,6 +13,9 @@ interface ProcessingPlanErrorStateProps {
   generating: boolean
   onRetry: () => void
   onGenerate: () => void
+  allowGenerate?: boolean
+  backPath?: string
+  backLabel?: string
 }
 
 export default function ProcessingPlanErrorState({
@@ -21,6 +24,9 @@ export default function ProcessingPlanErrorState({
   generating,
   onRetry,
   onGenerate,
+  allowGenerate = true,
+  backPath,
+  backLabel = '返回分析报告',
 }: ProcessingPlanErrorStateProps) {
   const notFound = error.code === PROCESSING_PLAN_NOT_FOUND_CODE
   const notReady = error.code === PROCESSING_PLAN_NOT_READY_CODE
@@ -33,7 +39,9 @@ export default function ProcessingPlanErrorState({
         ? '未找到对应分析任务'
         : '处理方案加载失败'
   const description = notFound
-    ? '可以根据当前分析报告生成建议步骤，生成过程不会修改原始音频。'
+    ? allowGenerate
+      ? '可以根据当前诊断结果生成建议步骤，生成过程不会修改原始音频。'
+      : '请返回智能处理，重新描述处理需求以生成方案。'
     : notReady
       ? '暂时无法生成处理方案，请等待分析完成后再试。'
       : taskNotFound
@@ -46,9 +54,9 @@ export default function ProcessingPlanErrorState({
       <h2>{title}</h2>
       <p>{description}</p>
       <div className="processing-plan-error__actions">
-        {notFound && <Button type="primary" loading={generating} onClick={onGenerate}>生成处理方案</Button>}
+        {notFound && allowGenerate && <Button type="primary" loading={generating} onClick={onGenerate}>生成处理方案</Button>}
         {!taskNotFound && !notFound && <Button icon={<ReloadOutlined />} onClick={onRetry}>重试</Button>}
-        <Link to={`/analysis/tasks/${encodeURIComponent(taskId)}/report`}><Button>返回分析报告</Button></Link>
+        <Link to={backPath || `/analysis/tasks/${encodeURIComponent(taskId)}/report`}><Button>{backLabel}</Button></Link>
       </div>
     </section>
   )

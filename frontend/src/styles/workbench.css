@@ -159,12 +159,14 @@
 .workbench-content { position: relative; min-width: 0; background: transparent; }
 .workbench-page { width: min(1480px, 100%); min-width: 0; margin: 0 auto; padding: 32px; }
 .workbench-page-title { display: flex; align-items: flex-end; justify-content: space-between; min-width: 0; gap: 24px; margin-bottom: 24px; }
+.workbench-page-title--compact { margin-bottom: 20px; }
 .workbench-page-title > div:first-child { min-width: 0; }
 .workbench-page-title > div:first-child > span,
 .workbench-section__heading span,
 .workbench-panel__heading span,
 .audio-upload-result__heading span { color: var(--workbench-accent); font-size: 10px; font-weight: 700; letter-spacing: .14em; }
 .workbench-page-title h2 { margin: 7px 0 6px; font-size: clamp(26px, 3vw, 34px); line-height: 1.2; letter-spacing: -.035em; }
+.workbench-page-title--compact h2 { margin-bottom: 0; }
 .workbench-page-title p { max-width: 680px; margin: 0; color: var(--workbench-text-secondary); line-height: 1.65; }
 .workbench-page-title__actions { display: flex; flex: 0 0 auto; gap: 10px; }
 .workbench-page-title__actions .ant-btn { min-height: 42px; }
@@ -264,12 +266,13 @@
 .audio-upload-file-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 18px; border: 1px solid var(--workbench-border); border-radius: var(--workbench-radius); background: var(--workbench-surface); }
 .audio-upload-file-card__icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 13px; background: var(--workbench-accent-soft); color: var(--workbench-accent); font-size: 20px; }
 .audio-upload-file-card__body { display: grid; min-width: 0; }
-.audio-upload-file-card__body > span:first-child { color: var(--workbench-text-muted); font-size: 11px; }
-.audio-upload-file-card__body > strong { margin: 3px 0 7px; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.audio-upload-file-card__body > div { display: flex; flex-wrap: wrap; gap: 6px; }
-.audio-upload-file-card__body > div span { padding: 2px 7px; border-radius: 5px; background: rgba(255, 255, 255, .045); color: var(--workbench-text-secondary); font-size: 10px; }
-.audio-upload-file-card__body > div .audio-upload-file-card__ready { background: var(--workbench-accent-soft); color: var(--workbench-accent); }
-.audio-upload-file-card__actions { display: flex; gap: 6px; }
+.audio-upload-file-card__body > strong { margin: 0 0 6px; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.audio-upload-file-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--workbench-text-secondary); font-size: 11px; }
+.audio-upload-file-card__meta i { color: var(--workbench-text-muted); font-style: normal; }
+.audio-upload-file-card__meta .audio-upload-file-card__ready { color: var(--workbench-accent); font-weight: 600; }
+.audio-upload-file-card__actions { display: flex; align-items: center; gap: 6px; }
+.audio-upload-file-card__actions .ant-btn { min-height: 44px; }
+.audio-upload-file-card__actions .ant-btn-icon-only { min-width: 44px; }
 
 .audio-upload-progress { padding: 18px; border: 1px solid rgba(91, 140, 255, .28); border-radius: var(--workbench-radius); background: rgba(91, 140, 255, .07); }
 .audio-upload-progress--error { border-color: rgba(255, 107, 129, .35); background: rgba(255, 107, 129, .07); }
@@ -280,12 +283,11 @@
 .audio-upload-progress strong { font-size: 13px; }
 .audio-upload-progress span:not(.audio-upload-progress__icon) { margin-top: 3px; color: var(--workbench-text-secondary); font-size: 12px; }
 .audio-upload-progress b { font-size: 14px; font-variant-numeric: tabular-nums; }
-
-.audio-upload-submit { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border: 1px solid var(--workbench-border); border-radius: var(--workbench-radius); background: var(--workbench-surface); }
-.audio-upload-submit > div { display: flex; align-items: center; gap: 9px; color: var(--workbench-text-secondary); font-size: 12px; }
-.audio-upload-submit > div .anticon { color: var(--workbench-accent); }
-.audio-upload-submit__actions { display: flex !important; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px !important; }
-.audio-upload-submit__actions .ant-btn { min-height: 44px; }
+.audio-upload-finalizing { display: flex; align-items: center; gap: 14px; padding: 20px; border: 1px solid rgba(91, 140, 255, .28); border-radius: var(--workbench-radius); background: rgba(91, 140, 255, .07); }
+.audio-upload-finalizing__icon { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(91, 140, 255, .12); color: var(--workbench-blue); font-size: 20px; }
+.audio-upload-finalizing > div { display: grid; min-width: 0; gap: 4px; }
+.audio-upload-finalizing strong { font-size: 14px; }
+.audio-upload-finalizing > div > span { color: var(--workbench-text-secondary); font-size: 12px; }
 
 .audio-upload-result { padding: 24px; border: 1px solid rgba(66, 220, 199, .3); border-radius: 16px; background: linear-gradient(145deg, rgba(66, 220, 199, .07), transparent 55%), var(--workbench-surface); box-shadow: var(--workbench-shadow); }
 .audio-upload-result__heading { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 22px; }
@@ -296,14 +298,8 @@
 .audio-upload-result .ant-descriptions-item-label { color: var(--workbench-text-muted); }
 .audio-upload-result .ant-descriptions-item-content { min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .audio-upload-result__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
-
-.audio-upload-flow { margin-top: 32px; padding: 20px; border-top: 1px solid var(--workbench-border); }
-.audio-upload-flow ol { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; padding: 0; list-style: none; }
-.audio-upload-flow li { position: relative; display: flex; align-items: center; min-width: 0; gap: 10px; color: var(--workbench-text-secondary); font-size: 12px; }
-.audio-upload-flow li::after { position: absolute; z-index: -1; top: 16px; left: 32px; width: calc(100% - 32px); height: 1px; background: linear-gradient(90deg, var(--workbench-primary), var(--workbench-border)); content: ''; }
-.audio-upload-flow li:last-child::after { display: none; }
-.audio-upload-flow b { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; border: 1px solid rgba(155, 109, 255, .4); border-radius: 10px; background: var(--workbench-bg); color: #cbb5ff; }
-.audio-upload-flow span { padding-right: 10px; background: var(--workbench-bg); }
+.audio-upload-result__actions .ant-btn { min-height: 44px; }
+.audio-upload-result__continue { margin-left: auto; color: var(--workbench-text-muted); }
 
 @keyframes workbench-breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(91, 140, 255, .15); opacity: .65; } 50% { box-shadow: 0 0 0 5px rgba(91, 140, 255, 0); opacity: 1; } }
 
@@ -328,6 +324,7 @@
   .workbench-user__copy { display: none; }
   .workbench-page { padding: 24px 16px calc(32px + env(safe-area-inset-bottom)); }
   .workbench-page-title { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .workbench-page-title--compact { gap: 12px; }
   .workbench-page-title__actions { width: 100%; flex-wrap: wrap; }
   .workbench-page-title__actions > a { flex: 1; }
   .workbench-page-title__actions .ant-btn { width: 100%; }
@@ -337,14 +334,7 @@
   .audio-upload-dropzone,
   .audio-upload-dropzone button { min-height: 260px; }
   .audio-upload-file-card { grid-template-columns: auto minmax(0, 1fr); }
-  .audio-upload-file-card__actions { grid-column: 1 / -1; justify-content: flex-end; }
-  .audio-upload-submit { align-items: stretch; flex-direction: column; }
-  .audio-upload-submit .ant-btn { min-height: 48px; }
-  .audio-upload-submit__actions { justify-content: stretch; }
-  .audio-upload-submit__actions .ant-btn { flex: 1; }
-  .audio-upload-flow { padding-inline: 0; }
-  .audio-upload-flow ol { grid-template-columns: repeat(2, 1fr); gap: 16px 0; }
-  .audio-upload-flow li:nth-child(2)::after { display: none; }
+  .audio-upload-file-card__actions { grid-column: 1 / -1; flex-wrap: wrap; justify-content: flex-end; }
 }
 
 @media (max-width: 480px) {
@@ -356,12 +346,12 @@
   .audio-upload-dropzone button > span:nth-of-type(2) { max-width: 270px; text-align: center; }
   .audio-upload-file-card { padding: 14px; }
   .audio-upload-file-card__actions .ant-btn:first-child { flex: 1; }
+  .audio-upload-file-card__actions .ant-btn-primary { flex: 1; }
   .audio-upload-result { padding: 18px 14px; }
   .audio-upload-result__actions { align-items: stretch; flex-direction: column; }
   .audio-upload-result__actions a,
   .audio-upload-result__actions .ant-btn { width: 100%; min-height: 44px; }
-  .audio-upload-flow ol { grid-template-columns: 1fr; }
-  .audio-upload-flow li::after { display: none; }
+  .audio-upload-result__continue { margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

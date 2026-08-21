@@ -14,7 +14,7 @@ interface CreateAnalysisTaskButtonProps {
   label?: string
 }
 
-export default function CreateAnalysisTaskButton({ audioFileId, fileName, block, buttonType = 'primary', size, label = '开始分析' }: CreateAnalysisTaskButtonProps) {
+export default function CreateAnalysisTaskButton({ audioFileId, fileName, block, buttonType = 'primary', size, label = '开始智能诊断' }: CreateAnalysisTaskButtonProps) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const { create, loading, error, resetError } = useCreateAnalysisTask()
@@ -36,9 +36,9 @@ export default function CreateAnalysisTaskButton({ audioFileId, fileName, block,
         {label}
       </Button>
       <Modal
-        title="开始分析音频"
+        title="开始智能诊断"
         open={open}
-        okText="开始分析"
+        okText="开始智能诊断"
         cancelText="取消"
         confirmLoading={loading}
         closable={!loading}
@@ -47,7 +47,7 @@ export default function CreateAnalysisTaskButton({ audioFileId, fileName, block,
         onOk={confirm}
         onCancel={close}
       >
-        <p className="analysis-confirm-description">系统将在后台分析音频，开始后可在“任务进度”中查看当前阶段。</p>
+        <p className="analysis-confirm-description">系统将在后台主动检测音频质量问题，完成后给出处理建议，不会直接修改原始音频。</p>
         <Descriptions column={1} size="small" items={[
           { key: 'file', label: '当前文件', children: fileName || '—' },
           { key: 'content', label: '分析内容', children: '音频质量、问题片段与处理建议' },

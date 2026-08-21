@@ -16,7 +16,11 @@ export default function KeyIssuesPanel({ issues, onLocate, onPreview }: KeyIssue
   return (
     <section className="report-key-issues report-reveal-section" aria-labelledby="key-issues-title">
       <div className="report-section-heading">
-        <div><span className="report-section-kicker">KEY ISSUES</span><h2 id="key-issues-title">重点问题</h2></div>
+        <div>
+          <span className="report-section-kicker">DETECTED ISSUES</span>
+          <h2 id="key-issues-title">检测到的问题</h2>
+          <p>优先查看问题说明与对应片段，再决定是否采用推荐处理方式。</p>
+        </div>
       </div>
       <div className="report-key-issues__list">
         {issues.map((issue, index) => (

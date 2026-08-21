@@ -1,13 +1,12 @@
 import {
   ArrowLeftOutlined,
-  CheckCircleOutlined,
   CopyOutlined,
   FileTextOutlined,
   LoadingOutlined,
   MessageOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import { Alert, App as AntdApp, Button, Progress, Skeleton } from 'antd'
+import { Alert, App as AntdApp, Button, Progress, Skeleton, Tabs, Tooltip } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { downloadAudioFile } from '../../api/audioFiles'
@@ -16,7 +15,6 @@ import ReportAudioPlayer from '../../components/audio/ReportAudioPlayer'
 import ContentAnalysisSection from '../../components/content-analysis/ContentAnalysisSection'
 import TranscriptParagraphList from '../../components/transcription/TranscriptParagraphList'
 import TranscriptSentenceList from '../../components/transcription/TranscriptSentenceList'
-import TranscriptionStatusBadge from '../../components/transcription/TranscriptionStatusBadge'
 import TranscriptViewSwitcher from '../../components/transcription/TranscriptViewSwitcher'
 import type { TranscriptViewMode } from '../../components/transcription/TranscriptViewSwitcher'
 import PageContainer from '../../components/workbench/PageContainer'
@@ -40,17 +38,20 @@ import {
 import '../analysis/analysis-report.css'
 import './transcription.css'
 
-function elapsedLabel(start?: string | null, end?: string | null) {
-  if (!start) return '—'
-  const startMs = new Date(start).getTime()
-  const endMs = end ? new Date(end).getTime() : Date.now()
-  return Number.isFinite(startMs) && Number.isFinite(endMs)
-    ? formatDuration(Math.max(0, endMs - startMs))
-    : '—'
+function languageLabel(value: string) {
+  const normalized = value.trim().toLowerCase()
+  if (normalized.startsWith('zh')) return '中文'
+  if (normalized.startsWith('en')) return '英文'
+  if (normalized.startsWith('ja')) return '日文'
+  if (normalized.startsWith('ko')) return '韩文'
+  return '其他语言'
 }
 
-function languageLabel(value: string) {
-  return value.toLowerCase() === 'zh' ? '中文（zh）' : value
+function taskStatusLabel(status: string) {
+  if (status === 'SUCCESS') return '已转写'
+  if (status === 'RUNNING') return '转写中'
+  if (status === 'FAILED') return '转写失败'
+  return '等待转写'
 }
 
 export default function TranscriptionDetailPage() {
@@ -72,6 +73,7 @@ export default function TranscriptionDetailPage() {
   const recreateState = useCreateTranscription()
   const player = useAudioPlayback(task?.audioFileId, transcriptState.transcript?.durationMs)
   const [downloading, setDownloading] = useState(false)
+  const [activeContentTab, setActiveContentTab] = useState('full')
   const [viewMode, setViewMode] = useState<TranscriptViewMode>('compact')
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(() => new Set())
   const [locatedSegmentOrder, setLocatedSegmentOrder] = useState<number | null>(null)
@@ -120,18 +122,23 @@ export default function TranscriptionDetailPage() {
   }, [activeSegmentOrder, paragraphs, player.isPlaying, viewMode])
 
   useEffect(() => {
-    if (locatedSegmentOrder === null) return
-    const element = document.querySelector<HTMLButtonElement>(
-      `[data-segment-order="${locatedSegmentOrder}"]`,
-    )
-    if (!element) return
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    element.scrollIntoView({
-      block: 'center',
-      behavior: reduceMotion ? 'auto' : 'smooth',
-    })
-    element.focus({ preventScroll: true })
-  }, [expandedGroupKeys, locatedSegmentOrder, viewMode])
+    if (locatedSegmentOrder === null || activeContentTab !== 'segments') return
+    const focusLocatedSegment = () => {
+      const element = document.querySelector<HTMLButtonElement>(
+        `[data-segment-order="${locatedSegmentOrder}"]`,
+      )
+      if (!element) return
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      element.scrollIntoView({
+        block: 'center',
+        behavior: reduceMotion ? 'auto' : 'smooth',
+      })
+      element.focus({ preventScroll: true })
+    }
+    focusLocatedSegment()
+    const timer = window.setTimeout(focusLocatedSegment, 0)
+    return () => window.clearTimeout(timer)
+  }, [activeContentTab, expandedGroupKeys, locatedSegmentOrder, viewMode])
 
   const download = async () => {
     if (!task || downloading) return
@@ -211,6 +218,7 @@ export default function TranscriptionDetailPage() {
       })
     }
 
+    setActiveContentTab('segments')
     setLocatedSegmentOrder(segmentOrder)
     void player.seekTo(targetSegment.startMs / 1000)
   }, [message, paragraphs, player.seekTo, segments, viewMode])
@@ -227,10 +235,8 @@ export default function TranscriptionDetailPage() {
   return (
     <PageContainer>
       <PageTitle
-        eyebrow="TRANSCRIPT DETAIL"
         title={task?.audioFileName || '音频文字稿'}
-        description="逐段查看识别文字，并与源音频时间轴联动。"
-        actions={<><Link to="/transcriptions"><Button icon={<ArrowLeftOutlined />}>返回转写列表</Button></Link>{ready && transcriptState.transcript && <Link to={`/transcriptions/${encodeURIComponent(validTaskId)}/agent`}><Button type="primary" icon={<MessageOutlined />}>智能问答</Button></Link>}<Button icon={<ReloadOutlined />} loading={refreshing || (ready && transcriptState.loading)} onClick={refreshPage}>{ready ? '刷新结果' : '刷新状态'}</Button></>}
+        actions={<><Link to="/transcriptions"><Button icon={<ArrowLeftOutlined />}>返回转写列表</Button></Link><Tooltip title={ready ? '刷新文字稿结果' : '刷新任务状态'}><Button type="text" icon={<ReloadOutlined />} aria-label={ready ? '刷新结果' : '刷新状态'} loading={refreshing || (ready && transcriptState.loading)} onClick={refreshPage} /></Tooltip>{ready && transcriptState.transcript && <Link to={`/transcriptions/${encodeURIComponent(validTaskId)}/agent`}><Button type="primary" icon={<MessageOutlined />}>智能问答</Button></Link>}</>}
       />
 
       {loading && !task && <section className="workbench-panel"><Skeleton active paragraph={{ rows: 8 }} /></section>}
@@ -256,31 +262,32 @@ export default function TranscriptionDetailPage() {
       )}
 
       {task && (
-        <>
-          <section className="workbench-panel transcription-summary" aria-labelledby="transcription-summary-title">
-            <div className="workbench-panel__heading"><div><span>TRANSCRIPTION STATUS</span><h3 id="transcription-summary-title">任务概览</h3></div><TranscriptionStatusBadge status={task.status} /></div>
-            <dl>
-              <div><dt>音频文件</dt><dd>{task.audioFileName || '未命名音频'}</dd></div>
-              <div><dt>语言</dt><dd>{languageLabel(task.language)}</dd></div>
-              <div><dt>转写耗时</dt><dd>{elapsedLabel(task.startedAt, task.finishedAt)}</dd></div>
-              <div><dt>创建时间</dt><dd>{formatDateTime(task.createdAt)}</dd></div>
-            </dl>
-            {task.status !== 'FAILED' && (
+        <div className="transcription-detail">
+          <div className="transcription-file-meta" aria-label="文件基本信息">
+            <strong className={`is-${task.status.toLowerCase()}`}>{taskStatusLabel(task.status)}</strong>
+            <span aria-hidden="true">·</span>
+            <span>{transcriptState.transcript ? formatDuration(transcriptState.transcript.durationMs) : '时长待生成'}</span>
+            <span aria-hidden="true">·</span>
+            <span>{languageLabel(task.language)}</span>
+            <span aria-hidden="true">·</span>
+            <time dateTime={task.createdAt}>{formatDateTime(task.createdAt)}</time>
+          </div>
+
+          {task.status !== 'SUCCESS' && task.status !== 'FAILED' && (
               <div className="transcription-live-progress" aria-live="polite">
                 <div>
-                  {task.status === 'SUCCESS' ? <CheckCircleOutlined /> : <LoadingOutlined spin />}
+                  <LoadingOutlined spin />
                   <span>{progressText}</span>
                   <strong>{progress}%</strong>
                 </div>
                 <Progress
                   percent={progress}
                   showInfo={false}
-                  status={task.status === 'SUCCESS' ? 'success' : 'active'}
+                  status="active"
                 />
-                <small>{task.status === 'SUCCESS' ? '文字稿已经可以查看。' : '页面每 2 秒自动刷新，离开后任务仍会继续。'}</small>
+                <small>页面每 2 秒自动刷新，离开后任务仍会继续。</small>
               </div>
-            )}
-          </section>
+          )}
 
           <ReportAudioPlayer
             player={player}
@@ -288,7 +295,7 @@ export default function TranscriptionDetailPage() {
             downloading={downloading}
             onDownload={() => { void download() }}
             sectionId="transcription-audio-player"
-            eyebrow="SOURCE AUDIO"
+            compact
           />
 
           {task.status === 'FAILED' && (
@@ -307,60 +314,72 @@ export default function TranscriptionDetailPage() {
           {ready && transcriptState.error && <Alert className="resource-detail-alert" type="error" showIcon message="文字稿加载失败" description={transcriptState.error} action={<Button onClick={transcriptState.refresh}>重试</Button>} />}
 
           {transcriptState.transcript && (
-            <>
-              <section className="workbench-panel transcript-full-text" aria-labelledby="transcript-full-title">
-                <div className="workbench-panel__heading">
-                  <div><span>FULL TRANSCRIPT</span><h3 id="transcript-full-title">完整文字稿</h3></div>
-                  <Button icon={<CopyOutlined />} disabled={!transcriptState.transcript.fullText.trim()} onClick={() => { void copyFullText() }}>复制全文</Button>
-                </div>
-                <div className={`transcript-full-text__content${transcriptState.transcript.fullText.trim() ? '' : ' is-empty'}`}>
-                  {transcriptState.transcript.fullText.trim()
-                    ? <p>{transcriptState.transcript.fullText}</p>
-                    : <div><FileTextOutlined /><strong>暂无完整文字稿内容</strong><span>识别结果为空，你仍可以查看下方时间片段或刷新结果。</span></div>}
-                </div>
-                <div className="transcript-facts">
-                  <span>音频时长 {formatDuration(transcriptState.transcript.durationMs)}</span>
-                  <span>语言 {languageLabel(transcriptState.transcript.language)}</span>
-                  <span>{transcriptState.transcript.segmentCount} 个片段</span>
-                  {typeof transcriptState.transcript.speakerCount === 'number' && transcriptState.transcript.speakerCount > 0 && <span>{transcriptState.transcript.speakerCount} 位说话人</span>}
-                </div>
-              </section>
-
-              <ContentAnalysisSection
-                transcriptId={transcriptState.transcript.transcriptId}
-                onLocateSegment={locateSegment}
+            <section className="transcript-workspace" aria-label="文字稿内容">
+              <Tabs
+                activeKey={activeContentTab}
+                onChange={setActiveContentTab}
+                items={[
+                  {
+                    key: 'full',
+                    label: '完整文字稿',
+                    children: (
+                      <div className="transcript-tab-panel transcript-full-text" aria-label="完整文字稿内容">
+                        <div className="transcript-tab-heading">
+                          <Button icon={<CopyOutlined />} disabled={!transcriptState.transcript.fullText.trim()} onClick={() => { void copyFullText() }}>复制全文</Button>
+                        </div>
+                        <div className={`transcript-full-text__content${transcriptState.transcript.fullText.trim() ? '' : ' is-empty'}`}>
+                          {transcriptState.transcript.fullText.trim()
+                            ? <p>{transcriptState.transcript.fullText}</p>
+                            : <div><FileTextOutlined /><strong>暂无完整文字稿内容</strong><span>识别结果为空，可以切换到时间片段或刷新结果。</span></div>}
+                        </div>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'segments',
+                    label: '时间片段',
+                    children: (
+                      <div className="transcript-tab-panel transcript-segments" aria-label="时间片段内容">
+                        <div className="transcript-tab-heading transcript-segments__heading">
+                          <small>{viewMode === 'compact' ? '点击段落时间即可播放' : '点击片段即可从对应位置播放'}</small>
+                          <TranscriptViewSwitcher value={viewMode} onChange={setViewMode} />
+                        </div>
+                        {viewMode === 'compact' ? (
+                          <TranscriptParagraphList
+                            paragraphs={paragraphs}
+                            expandedGroupKeys={expandedGroupKeys}
+                            highlightedSegmentOrder={highlightedSegmentOrder}
+                            loading={transcriptState.loading}
+                            onPlayParagraph={playParagraph}
+                            onPlaySegment={playSegment}
+                            onToggleParagraph={toggleParagraph}
+                          />
+                        ) : (
+                          <TranscriptSentenceList
+                            segments={segments}
+                            highlightedSegmentOrder={highlightedSegmentOrder}
+                            loading={transcriptState.loading}
+                            onPlaySegment={playSegment}
+                          />
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'analysis',
+                    label: '智能分析',
+                    children: (
+                      <ContentAnalysisSection
+                        transcriptId={transcriptState.transcript.transcriptId}
+                        onLocateSegment={locateSegment}
+                      />
+                    ),
+                  },
+                ]}
               />
-
-              <section className="workbench-panel transcript-segments" aria-labelledby="transcript-segments-title">
-                <div className="workbench-panel__heading transcript-segments__heading">
-                  <div><span>TIMESTAMPED SEGMENTS</span><h3 id="transcript-segments-title">时间片段</h3></div>
-                  <div className="transcript-segments__controls">
-                    <small>{viewMode === 'compact' ? '点击段落时间即可播放' : '点击片段即可从对应位置播放'}</small>
-                    <TranscriptViewSwitcher value={viewMode} onChange={setViewMode} />
-                  </div>
-                </div>
-                {viewMode === 'compact' ? (
-                  <TranscriptParagraphList
-                    paragraphs={paragraphs}
-                    expandedGroupKeys={expandedGroupKeys}
-                    highlightedSegmentOrder={highlightedSegmentOrder}
-                    loading={transcriptState.loading}
-                    onPlayParagraph={playParagraph}
-                    onPlaySegment={playSegment}
-                    onToggleParagraph={toggleParagraph}
-                  />
-                ) : (
-                  <TranscriptSentenceList
-                    segments={segments}
-                    highlightedSegmentOrder={highlightedSegmentOrder}
-                    loading={transcriptState.loading}
-                    onPlaySegment={playSegment}
-                  />
-                )}
-              </section>
-            </>
+            </section>
           )}
-        </>
+        </div>
       )}
     </PageContainer>
   )

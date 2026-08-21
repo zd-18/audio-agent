@@ -21,10 +21,10 @@ import java.util.Map;
 public class AudioRecommendationBuilder {
 
     private static final Map<String, String> ISSUE_MESSAGES = Map.of(
-            "SILENCE", "建议试听该片段，确认是否需要删除或缩短静音。",
-            "VOLUME_DROP", "该片段音量偏低，建议适当提升增益并与前后内容保持一致。",
-            "VOLUME_SPIKE", "该片段音量突然升高，建议降低增益并检查是否存在失真。",
-            "NOISE_RISK", "该片段疑似存在背景噪声，建议试听确认后进行轻度降噪。"
+            "SILENCE", "检测到连续静音，建议试听后缩短或裁剪。",
+            "VOLUME_DROP", "该片段音量偏低，建议与前后内容对比试听。",
+            "VOLUME_SPIKE", "该片段音量突然升高，建议检查峰值与失真。",
+            "NOISE_RISK", "该片段疑似存在背景噪声，建议试听确认。"
     );
 
     private final AnalysisProperties properties;
@@ -49,6 +49,8 @@ public class AudioRecommendationBuilder {
                     .startMs(issue.getStartMs())
                     .endMs(issue.getEndMs())
                     .message(message)
+                    .recommendedMethod(methodOf(issue))
+                    .recommendedParameters(parametersOf(issue))
                     .build());
         }
 
@@ -72,11 +74,11 @@ public class AudioRecommendationBuilder {
                         result.getSamplePeakDbfs(),
                         result.getTruePeakDbfs()));
         if ("LOW".equals(evaluation.loudnessLevel())) {
-            addGeneral(recommendations, "MEDIUM",
-                    "整体音量偏低，建议适当提升整体响度。");
+            addLoudness(recommendations, "MEDIUM", result,
+                    "整体响度偏低。");
         } else if ("HIGH".equals(evaluation.loudnessLevel())) {
-            addGeneral(recommendations, "HIGH",
-                    "整体音量偏高，建议降低整体增益并检查峰值。");
+            addLoudness(recommendations, "HIGH", result,
+                    "整体响度偏高。");
         }
         if ("RISK".equals(evaluation.peakRisk())) {
             addGeneral(recommendations, "HIGH",
@@ -95,6 +97,56 @@ public class AudioRecommendationBuilder {
                             String priority, String message) {
         recommendations.putIfAbsent(message, Recommendation.builder()
                 .priority(priority).message(message).build());
+    }
+
+    private void addLoudness(Map<String, Recommendation> recommendations,
+                             String priority, AudioAnalysisResult result,
+                             String message) {
+        String current = result.getIntegratedLoudnessLufs() == null
+                ? message : message + " 当前："
+                + result.getIntegratedLoudnessLufs().stripTrailingZeros()
+                .toPlainString() + " LUFS。";
+        recommendations.putIfAbsent(current, Recommendation.builder()
+                .priority(priority)
+                .message(current)
+                .recommendedMethod("整段响度标准化")
+                .recommendedParameters("目标 "
+                        + properties.getLoudness().getTargetLufs()
+                        + " LUFS，真峰值上限 "
+                        + properties.getLoudness().getTruePeakLimitDbfs()
+                        + " dBFS")
+                .build());
+    }
+
+    private String methodOf(AudioIssueSegment issue) {
+        return switch (issue.getIssueType()) {
+            case "SILENCE" -> issue.getDurationMs() != null
+                    && issue.getDurationMs() >= properties
+                    .getProcessingPlan().getSilence().getLongSilenceMinMs()
+                    ? "压缩长静音" : "裁剪静音片段";
+            case "NOISE_RISK" -> "轻度降噪";
+            case "VOLUME_DROP", "VOLUME_SPIKE" -> "平衡局部音量";
+            default -> null;
+        };
+    }
+
+    private String parametersOf(AudioIssueSegment issue) {
+        return switch (issue.getIssueType()) {
+            case "SILENCE" -> issue.getDurationMs() != null
+                    && issue.getDurationMs() >= properties
+                    .getProcessingPlan().getSilence().getLongSilenceMinMs()
+                    ? "静音超过 " + properties.getProcessingPlan()
+                    .getSilence().getLongSilenceMinMs() + " ms 时保留 "
+                    + properties.getProcessingPlan().getSilence()
+                    .getKeepSilenceMs() + " ms"
+                    : "试听确认裁剪范围";
+            case "NOISE_RISK" -> "建议强度 "
+                    + ("HIGH".equalsIgnoreCase(issue.getSeverity())
+                    ? "STRONG" : "MEDIUM");
+            case "VOLUME_DROP", "VOLUME_SPIKE" ->
+                    "根据上下文试听后确认增益";
+            default -> null;
+        };
     }
 
     private String priorityOf(String severity) {

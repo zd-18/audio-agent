@@ -167,6 +167,8 @@
 .report-audio-player__volume input:focus-visible { outline: 3px solid rgba(155, 109, 255, .38); outline-offset: 3px; }
 .report-audio-player__rate { width: 92px; }
 .report-audio-player__rate .ant-select-selector { min-height: 44px !important; }
+.report-audio-player.is-compact { padding: 16px 18px; box-shadow: none; }
+.report-audio-player.is-compact .report-audio-player__header { margin-bottom: 12px; }
 
 .report-quality {
   position: relative;
@@ -219,6 +221,33 @@
 .report-quality__facts strong { margin-right: 4px; color: var(--workbench-text); font-size: 14px; font-variant-numeric: tabular-nums; }
 
 .report-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.report-current-metrics { display: grid; min-width: 0; gap: 14px; }
+.report-current-metrics > .report-section-heading { margin-bottom: 0; }
+
+.report-timeline-disclosure {
+  min-width: 0;
+  border: 1px solid var(--workbench-border);
+  border-radius: var(--workbench-radius);
+  background: rgba(255, 255, 255, .018);
+}
+
+.report-timeline-disclosure > summary {
+  min-height: 48px;
+  padding: 14px 18px;
+  color: var(--workbench-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.report-timeline-disclosure > summary:focus-visible {
+  border-radius: var(--workbench-radius);
+  outline: 3px solid rgba(66, 220, 199, .38);
+  outline-offset: 2px;
+}
+
+.report-timeline-disclosure[open] > summary { border-bottom: 1px solid var(--workbench-border); }
+.report-timeline-disclosure > .report-timeline { border: 0; border-radius: 0 0 var(--workbench-radius) var(--workbench-radius); box-shadow: none; }
 .report-info-panel,
 .report-issue-summary,
 .report-timeline,
@@ -379,7 +408,7 @@
 .report-recommendation > div { min-width: 0; }
 .report-priority { color: var(--recommendation-color); font-size: 9px; font-weight: 700; letter-spacing: .06em; }
 .report-recommendation p { margin: 4px 0 0; color: var(--workbench-text-secondary); font-size: 12px; line-height: 1.6; }
-.report-recommendation small { display: block; margin-top: 5px; color: var(--workbench-text-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.report-recommendation small { display: block; margin-top: 5px; color: var(--workbench-text-muted); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .report-recommendation--high { --recommendation-color: #ff9aaa; }
 .report-recommendation--medium { --recommendation-color: #f3c57f; }
 .report-recommendation--low { --recommendation-color: #79d9ce; }

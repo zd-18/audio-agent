@@ -54,6 +54,8 @@ export interface Recommendation {
   startMs?: number
   endMs?: number
   message?: string
+  recommendedMethod?: string
+  recommendedParameters?: string
 }
 
 export interface AudioAnalysisReport {

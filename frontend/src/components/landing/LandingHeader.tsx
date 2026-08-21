@@ -1,11 +1,12 @@
-import { CloseOutlined, LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons'
-import { Avatar, Dropdown } from 'antd'
+import { CloseOutlined, LogoutOutlined, MenuOutlined } from '@ant-design/icons'
+import { Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import type { LandingSectionId } from '../../pages/landing/LandingPage'
 import AnimatedBorderButton from './AnimatedBorderButton'
+import UsernameAvatar from '../user/UsernameAvatar'
 
 const navItems: Array<{ label: string; id: LandingSectionId }> = [
   { label: '首页', id: 'home' },
@@ -106,11 +107,7 @@ export default function LandingHeader({ activeSection, isScrolled, onNavigate }:
                 type="button"
                 aria-label={`打开${userName}的用户菜单`}
               >
-                <Avatar
-                  size={28}
-                  src={currentUser.avatarUrl || undefined}
-                  icon={<UserOutlined />}
-                />
+                <UsernameAvatar username={currentUser.username} size={28} />
                 <span className="landing-user-trigger__name">{userName}</span>
               </button>
             </Dropdown>

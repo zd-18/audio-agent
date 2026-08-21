@@ -14,6 +14,7 @@ public class MultipartUploadState {
     private String mimeType;
     private Long sizeBytes;
     private String sha256;
+    private String resumeFingerprint;
     private Long chunkSize;
     private Integer totalChunks;
     private String finalObjectKey;

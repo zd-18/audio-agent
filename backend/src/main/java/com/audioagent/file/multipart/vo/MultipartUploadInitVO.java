@@ -13,6 +13,7 @@ public class MultipartUploadInitVO {
     private String uploadId;
     private String status;
     private boolean instantUpload;
+    private boolean resumed;
     private Long chunkSize;
     private Integer totalChunks;
     private List<Integer> uploadedChunks;

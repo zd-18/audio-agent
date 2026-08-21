@@ -109,6 +109,8 @@ public class AudioAnalysisReportVO {
         private Long startMs;
         private Long endMs;
         private String message;
+        private String recommendedMethod;
+        private String recommendedParameters;
     }
 
     /** 持久化 JSON，仅包含最终用户内容；关联身份和摘要使用表列存储。 */

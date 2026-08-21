@@ -190,6 +190,11 @@ public class AgentProcessingWorkflowServiceImpl
             AgentProcessingWorkflow workflow) {
         AgentWorkflowStatus current = status(workflow);
         if (workflow.getExecutionId() == null
+                && current == AgentWorkflowStatus.WAITING_CONFIRMATION) {
+            workflow = attachExecutionStartedFromUnifiedPlan(workflow);
+            current = status(workflow);
+        }
+        if (workflow.getExecutionId() == null
                 || !(current == AgentWorkflowStatus.EXECUTING
                 || current == AgentWorkflowStatus.REVIEWING)) {
             return workflow;
@@ -215,6 +220,52 @@ public class AgentProcessingWorkflowServiceImpl
             workflow.setFinishedAt(finishedAt);
         }
         return workflow;
+    }
+
+    /**
+     * The unified processing-plan page creates the execution through the
+     * shared confirmation/execution services rather than the legacy Agent
+     * confirm endpoint. Reconnect that execution to the Agent workflow when
+     * the conversation is loaded again so both entry points observe the same
+     * state machine.
+     */
+    private AgentProcessingWorkflow attachExecutionStartedFromUnifiedPlan(
+            AgentProcessingWorkflow workflow) {
+        try {
+            ProcessingConfirmationVO confirmation = confirmationService
+                    .getCurrent(workflow.getUserId(), workflow.getTaskId());
+            if (confirmation == null
+                    || !workflow.getConfirmationId().equals(
+                    confirmation.getConfirmationId())
+                    || !"CONFIRMED".equals(
+                    confirmation.getConfirmationStatus())) {
+                return workflow;
+            }
+            ProcessingExecutionVO execution = executionService.getByTask(
+                    workflow.getUserId(), workflow.getTaskId());
+            if (execution == null
+                    || !confirmation.getConfirmationId().equals(
+                    execution.getConfirmationId())) {
+                return workflow;
+            }
+            LocalDateTime now = LocalDateTime.now();
+            if (workflowMapper.markExecuting(workflow.getId(),
+                    execution.getExecutionId(), now) == 1) {
+                workflow.setExecutionId(execution.getExecutionId());
+                workflow.setWorkflowStatus(
+                        AgentWorkflowStatus.EXECUTING.name());
+                workflow.setUpdatedAt(now);
+            }
+            return workflow;
+        } catch (BusinessException error) {
+            if (error.getCode()
+                    == ErrorCode.PROCESSING_CONFIRMATION_NOT_FOUND.getCode()
+                    || error.getCode()
+                    == ErrorCode.PROCESSING_EXECUTION_NOT_FOUND.getCode()) {
+                return workflow;
+            }
+            throw error;
+        }
     }
 
     private AgentWorkflowStatus mapStatus(ProcessingExecutionVO execution) {

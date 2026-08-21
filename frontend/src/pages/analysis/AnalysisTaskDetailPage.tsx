@@ -23,7 +23,7 @@ export default function AnalysisTaskDetailPage() {
   const { task, loading, refreshing, error, lastUpdatedAt, refresh, resumeWith } = useAnalysisTaskPolling(validId)
 
   if (!validId) {
-    return <PageContainer><PageTitle eyebrow="INVALID TASK" title="任务 ID 无效" description="URL 中的 taskId 为空或不是有效的正整数。" /><Alert type="error" showIcon message="无法查询任务" description="请返回分析任务页并输入创建接口返回的真实 taskId。" action={<Link to="/analysis/tasks"><Button>返回查询</Button></Link>} /></PageContainer>
+    return <PageContainer><PageTitle eyebrow="INVALID TASK" title="任务 ID 无效" /><Alert type="error" showIcon message="无法查询任务" description="请返回分析任务页并输入创建接口返回的真实 taskId。" action={<Link to="/analysis/tasks"><Button>返回查询</Button></Link>} /></PageContainer>
   }
 
   return (
@@ -31,7 +31,6 @@ export default function AnalysisTaskDetailPage() {
       <PageTitle
         eyebrow="ANALYSIS TASK DETAIL"
         title="分析任务详情"
-        description={`taskId: ${validId}`}
         actions={<><Button icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>手动刷新</Button>{task && <ReportAccessButton taskId={task.taskId} status={task.status} type={task.status === 'SUCCESS' ? 'primary' : 'default'} />}{task && <ProcessingPlanAccessButton taskId={task.taskId} status={task.status} />}{task?.status === 'FAILED' && <ManualRetryButton taskId={task.taskId} onRetried={resumeWith} />}</>}
       />
 

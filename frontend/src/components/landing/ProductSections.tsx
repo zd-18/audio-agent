@@ -344,7 +344,7 @@ export function BottomActionSection() {
         <h2 id="bottom-action-title">从一段音频开始，建立清晰的分析流程</h2>
         <p>上传音频查看已上线的文件管理、元数据分析与异步任务能力。</p>
         <div className="landing-bottom-action__buttons">
-          <AnimatedBorderButton to="/audio/upload">开始分析音频</AnimatedBorderButton>
+          <AnimatedBorderButton to="/audio/upload">开始智能诊断</AnimatedBorderButton>
           <AnimatedBorderButton to="/dashboard" variant="secondary">进入工作台</AnimatedBorderButton>
         </div>
       </div>
