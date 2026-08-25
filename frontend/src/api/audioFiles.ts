@@ -3,6 +3,7 @@ import {
   apiRequest,
   authorizedFetch,
   handleUnauthorizedStatus,
+  isValidResourceId,
   parseApiResponse,
   setXmlHttpRequestAuthHeader,
   unwrapApiResponse,
@@ -163,6 +164,29 @@ export function getAudioFileDetail(audioFileId: string, signal?: AbortSignal) {
   })
 }
 
+export function renameAudioFile(audioFileId: string, fileName: string) {
+  if (!isValidResourceId(audioFileId)) throw new Error('音频文件 ID 无效')
+  return apiRequest<AudioFileRecord>(`/api/v1/files/${encodeURIComponent(audioFileId)}/name`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileName }),
+  })
+}
+
+export function archiveAudioFile(audioFileId: string) {
+  if (!isValidResourceId(audioFileId)) throw new Error('音频文件 ID 无效')
+  return apiRequest<AudioFileRecord>(`/api/v1/files/${encodeURIComponent(audioFileId)}/archive`, {
+    method: 'POST',
+  })
+}
+
+export function restoreArchivedAudioFile(audioFileId: string) {
+  if (!isValidResourceId(audioFileId)) throw new Error('音频文件 ID 无效')
+  return apiRequest<AudioFileRecord>(`/api/v1/files/${encodeURIComponent(audioFileId)}/restore-archive`, {
+    method: 'POST',
+  })
+}
+
 export function getAudioPlaybackUrl(audioFileId: string, signal?: AbortSignal) {
   return apiRequest<AudioPlaybackUrlResponse>(
     `/api/v1/files/${encodeURIComponent(audioFileId)}/playback-url`,
@@ -177,6 +201,45 @@ export interface AudioFileListParams {
   size?: number
   keyword?: string
   status?: string
+}
+
+export function getAudioRecycleBinList(
+  params: Pick<AudioFileListParams, 'current' | 'size' | 'keyword'> = {},
+  signal?: AbortSignal,
+) {
+  const search = new URLSearchParams({
+    current: String(params.current ?? 1),
+    size: String(params.size ?? 10),
+  })
+  const keyword = params.keyword?.trim()
+  if (keyword) search.set('keyword', keyword)
+  return apiRequest<PageResult<AudioFileListItem>>(
+    `/api/v1/files/recycle-bin?${search.toString()}`,
+    { signal },
+  )
+}
+
+export function moveAudioFileToRecycleBin(audioFileId: string) {
+  if (!isValidResourceId(audioFileId)) throw new Error('音频文件 ID 无效')
+  return apiRequest<void>(`/api/v1/files/${encodeURIComponent(audioFileId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function restoreAudioFileFromRecycleBin(audioFileId: string) {
+  if (!isValidResourceId(audioFileId)) throw new Error('音频文件 ID 无效')
+  return apiRequest<AudioFileRecord>(
+    `/api/v1/files/recycle-bin/${encodeURIComponent(audioFileId)}/restore`,
+    { method: 'POST' },
+  )
+}
+
+export function purgeAudioFile(audioFileId: string) {
+  if (!isValidResourceId(audioFileId)) throw new Error('音频文件 ID 无效')
+  return apiRequest<void>(
+    `/api/v1/files/recycle-bin/${encodeURIComponent(audioFileId)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export function getAudioFileList(params: AudioFileListParams = {}, signal?: AbortSignal) {

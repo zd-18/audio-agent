@@ -53,7 +53,8 @@ class AudioProcessingExecutionExecutorTest {
                 mock(ProcessingOutputValidator.class),
                 mock(ProcessingResultCritic.class), workDirectories,
                 new ProcessingExecutionErrorClassifier(),
-                new ObjectMapper(), mock(TransactionTemplate.class));
+                new ObjectMapper(), mock(TransactionTemplate.class),
+                new com.audioagent.analysis.process.ExternalProcessContextRegistry());
     }
 
     @Test

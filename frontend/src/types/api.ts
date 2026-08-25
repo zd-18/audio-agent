@@ -20,6 +20,7 @@ export interface AudioFileRecord {
   versionSummary?: string
   durationMs?: number
   createdAt?: string
+  deletedAt?: string
 }
 
 export type MultipartUploadStatus = 'INIT' | 'UPLOADING' | 'MERGING' | 'COMPLETED' | 'FAILED'

@@ -52,9 +52,11 @@ Audio Agent 面向需要处理长音频的用户，将以下流程串成一条�
 - **完整性与去重**：按当前用户和 SHA-256 查重；合并后重新校验文件大小和 SHA-256。
 - **音频分析**：FFprobe 元数据解析，以及静音、响度、音量变化、噪声风险和质量报告。
 - **转写与内容分析**：FunASR 转写，DeepSeek 基于转写片段做内容分析。
+- **文字稿维护与导出**：支持片段文字和说话人标签修改，以及 TXT、SRT、VTT 导出。
 - **Agent 处理**：Planner 生成方案，用户确认后 Executor 调用 FFmpeg，Critic 校验结果。
 - **音频处理步骤**：`NORMALIZE_VOLUME`、`TRIM_SEGMENT`、`DENOISE`、`SILENCE_CLEANUP`（`COMPRESS` / `REMOVE`）。
 - **版本管理与隔离**：原始音频不被覆盖；Sa-Token 会话认证配合服务层 ownership 隔离。
+- **回收站与任务恢复**：音频可恢复删除或永久清理；失败任务集中展示，运行中的 FFmpeg 任务可以取消。
 
 ## 系统架构
 
@@ -180,8 +182,15 @@ graph TD
 
 ## 项目运行
 
-准备 MySQL、Redis、RabbitMQ、MinIO、FunASR、FFmpeg/FFprobe，再启动 Spring Boot 后端和 React 前端。`infra/docker-compose.yml` 当前只包含 Redis、MinIO；本次文档调整不启动 Docker、不修改真实数据库。
+准备 MySQL、Redis、RabbitMQ、MinIO、FunASR、FFmpeg/FFprobe，再启动 Spring Boot 后端和 React 前端。`infra/docker-compose.yml` 当前只包含 Redis、MinIO。
+
+新数据库必须严格按以下顺序执行脚本：
+
+1. `scripts/sql/01_create_database.sql` 至 `05_alter_analysis_task_add_retry.sql`。
+2. `backend/sql/06_create_audio_issue_segments.sql` 至 `25_add_audio_file_recycle_bin.sql`。
+
+已有数据库只执行尚未应用的更高编号迁移，不要重新执行全部 `ALTER TABLE` 脚本。数据库、环境变量和完整启动步骤见 [`docs/development.md`](docs/development.md)。
 
 敏感配置、后端/前端启动命令和本地依赖说明统一见 [`docs/development.md`](docs/development.md)。文档只列环境变量名，不包含密码、Token 或 API Key。
 
-核心业务链路覆盖单元测试与集成测试，包括 Outbox 事务、消息消费幂等、用户资源隔离及音频处理 Pipeline 等场景。
+核心业务链路覆盖单元测试与集成测试，包括 Outbox 事务、消息消费幂等、用户资源隔离及音频处理 Pipeline 等场景。前端还提供 Vitest 全量测试和基于系统 Microsoft Edge 的 Playwright 关键导航测试。

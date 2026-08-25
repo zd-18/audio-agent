@@ -10,7 +10,8 @@ public enum FileStatus {
     AVAILABLE(2, "可用"),
     PROCESSING(3, "处理中"),
     FAILED(4, "失败"),
-    DELETED(5, "已删除");
+    DELETED(5, "已删除"),
+    ARCHIVED(6, "已归档");
 
     @EnumValue
     private final int code;

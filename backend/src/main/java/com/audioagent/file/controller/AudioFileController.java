@@ -5,6 +5,7 @@ import com.audioagent.common.api.ApiResponse;
 import java.io.IOException;
 import com.audioagent.common.api.PageResult;
 import com.audioagent.file.entity.AudioFile;
+import com.audioagent.file.dto.RenameAudioFileRequest;
 import com.audioagent.file.multipart.MultipartUploadService;
 import com.audioagent.file.multipart.dto.MultipartUploadInitRequest;
 import com.audioagent.file.multipart.vo.MultipartChunkVO;
@@ -18,6 +19,7 @@ import com.audioagent.file.vo.AudioFileListVO;
 import com.audioagent.file.vo.AudioPlaybackUrlVO;
 import com.audioagent.file.vo.AudioVersionChainVO;
 import com.audioagent.infrastructure.minio.MinioStorageService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ContentDisposition;
@@ -53,6 +55,17 @@ public class AudioFileController {
         Long userId = currentUserProvider.requireUserId();
         return ApiResponse.success(audioFileService.listFiles(
                 userId, current, size, keyword, status));
+    }
+
+    @GetMapping("/recycle-bin")
+    public ApiResponse<PageResult<AudioFileListVO>> listRecycleBin(
+            @RequestParam(defaultValue = "1") int current,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(audioFileService.listRecycleBin(
+                userId, current, size, keyword));
     }
 
     @PostMapping(
@@ -119,6 +132,54 @@ public class AudioFileController {
                 audioFileService.getFileDetail(userId, fileId);
 
         return ApiResponse.success(result);
+    }
+
+    @PatchMapping("/{fileId}/name")
+    public ApiResponse<AudioFileVO> rename(
+            @PathVariable Long fileId,
+            @Valid @RequestBody RenameAudioFileRequest request
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(audioFileService.rename(
+                userId, fileId, request.getFileName()));
+    }
+
+    @PostMapping("/{fileId}/archive")
+    public ApiResponse<AudioFileVO> archive(@PathVariable Long fileId) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(audioFileService.archive(userId, fileId));
+    }
+
+    @PostMapping("/{fileId}/restore-archive")
+    public ApiResponse<AudioFileVO> restoreArchive(
+            @PathVariable Long fileId
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(
+                audioFileService.restoreArchive(userId, fileId));
+    }
+
+    @DeleteMapping("/{fileId}")
+    public ApiResponse<Void> moveToRecycleBin(@PathVariable Long fileId) {
+        Long userId = currentUserProvider.requireUserId();
+        audioFileService.moveToRecycleBin(userId, fileId);
+        return ApiResponse.success(null);
+    }
+
+    @PostMapping("/recycle-bin/{fileId}/restore")
+    public ApiResponse<AudioFileVO> restoreFromRecycleBin(
+            @PathVariable Long fileId
+    ) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(audioFileService.restoreFromRecycleBin(
+                userId, fileId));
+    }
+
+    @DeleteMapping("/recycle-bin/{fileId}")
+    public ApiResponse<Void> purge(@PathVariable Long fileId) {
+        Long userId = currentUserProvider.requireUserId();
+        audioFileService.purge(userId, fileId);
+        return ApiResponse.success(null);
     }
 
     @GetMapping("/{fileId}/playback-url")

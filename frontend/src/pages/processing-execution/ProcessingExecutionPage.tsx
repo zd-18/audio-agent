@@ -1,5 +1,5 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Alert, Button } from 'antd'
+import { Alert, App as AntdApp, Button } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { downloadAudioFile } from '../../api/audioFiles'
@@ -19,6 +19,7 @@ import ExecutionSummary from './components/ExecutionSummary'
 import ProcessingExecutionSkeleton from './components/ProcessingExecutionSkeleton'
 
 export default function ProcessingExecutionPage() {
+  const { message, modal } = AntdApp.useApp()
   const { taskId } = useParams()
   const validTaskId = isValidResourceId(taskId) ? taskId : undefined
   const state = useProcessingExecution({ taskId: validTaskId, autoPoll: true })
@@ -93,6 +94,31 @@ export default function ProcessingExecutionPage() {
   }
 
   const backPath = `/analysis/tasks/${encodeURIComponent(validTaskId)}/processing-plan`
+  const cancellable = execution?.executionStatus === 'PENDING'
+    || execution?.executionStatus === 'QUEUED'
+    || execution?.executionStatus === 'PROCESSING'
+
+  const cancelExecution = () => {
+    if (!cancellable || state.cancelling) return
+    modal.confirm({
+      title: '取消处理任务？',
+      content: execution?.executionStatus === 'PROCESSING'
+        ? '正在运行的 FFmpeg 进程将被终止，临时文件和未提交结果会被清理，原始音频不会受到影响。'
+        : '任务尚未开始执行，可以安全取消；原始音频不会受到影响。',
+      okText: '确认取消',
+      cancelText: '继续等待',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await state.cancel()
+          void message.success('处理任务已取消')
+        } catch {
+          void message.error('取消失败，任务可能已经开始处理，请刷新状态')
+          throw new Error('cancel failed')
+        }
+      },
+    })
+  }
 
   return (
     <PageContainer>
@@ -112,6 +138,9 @@ export default function ProcessingExecutionPage() {
             >
               刷新状态
             </Button>
+            {cancellable && (
+              <Button danger loading={state.cancelling} onClick={cancelExecution}>取消任务</Button>
+            )}
           </>
         )}
       />

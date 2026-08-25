@@ -1,6 +1,7 @@
 package com.audioagent.processing.executor;
 
 import com.audioagent.analysis.processing.ProcessingOperationType;
+import com.audioagent.analysis.process.ExternalProcessContextRegistry;
 import com.audioagent.analysis.probe.AudioMetadata;
 import com.audioagent.analysis.probe.AudioMetadataProbe;
 import com.audioagent.common.enums.ErrorCode;
@@ -67,6 +68,7 @@ public class AudioProcessingExecutionExecutor {
     private final ProcessingExecutionErrorClassifier errorClassifier;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
+    private final ExternalProcessContextRegistry processContexts;
 
     public void execute(Long executionId) {
         if (executionId == null || executionId <= 0) {
@@ -83,11 +85,14 @@ public class AudioProcessingExecutionExecutor {
             return;
         }
 
+        String processContext = "audio-processing:" + executionId;
+        processContexts.begin(processContext);
         long started = System.currentTimeMillis();
         Path workDirectory = null;
         String uploadedObjectKey = null;
         boolean resultCommitted = false;
         try {
+            processContexts.throwIfCurrentCancelled();
             AudioProcessingExecution execution = requireExecution(executionId);
             AudioFile source = requireSource(execution);
             workDirectory = workDirectories.prepare(executionId);
@@ -120,6 +125,7 @@ public class AudioProcessingExecutionExecutor {
                     workDirectory, (stage, progress) -> executionMapper
                             .advance(executionId, stage.name(), progress,
                                     LocalDateTime.now()));
+            processContexts.throwIfCurrentCancelled();
 
             executionMapper.advance(executionId,
                     ProcessingExecutionStage.METADATA_EXTRACTING.name(), 85,
@@ -156,6 +162,7 @@ public class AudioProcessingExecutionExecutor {
             executionMapper.advance(executionId,
                     ProcessingExecutionStage.UPLOADING.name(), 90,
                     LocalDateTime.now());
+            processContexts.throwIfCurrentCancelled();
 
             uploadedObjectKey = resultObjectKey(execution);
             ResultFileData result = uploadAndDigest(output.path(),
@@ -188,6 +195,7 @@ public class AudioProcessingExecutionExecutor {
                 compensateDelete(uploadedObjectKey);
             }
             workDirectories.cleanQuietly(executionId);
+            processContexts.complete(processContext);
         }
     }
 

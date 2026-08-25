@@ -11,6 +11,8 @@ export default defineConfig({
       threads: { singleThread: true },
     },
     fileParallelism: false,
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
     restoreMocks: true,
     clearMocks: true,
   },

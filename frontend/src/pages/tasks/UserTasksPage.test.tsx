@@ -113,4 +113,13 @@ describe('UserTasksPage', () => {
     expect(retryAnalysisTask).toHaveBeenCalledWith('9007199254740993')
     expect(screen.queryByText(/FFprobe|RabbitMQ|executionId|failureCode/)).not.toBeInTheDocument()
   })
+
+  it('provides a focused exception-task view without completed history', async () => {
+    render(<MemoryRouter initialEntries={['/tasks?view=exceptions']}><UserTasksPage /></MemoryRouter>)
+
+    expect(screen.getByRole('button', { name: /查看全部任务/ })).toBeInTheDocument()
+    expect(screen.getByText('访谈录音.wav')).toBeInTheDocument()
+    expect(screen.queryByText('已处理录音.wav')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '处理记录' })).not.toBeInTheDocument()
+  })
 })

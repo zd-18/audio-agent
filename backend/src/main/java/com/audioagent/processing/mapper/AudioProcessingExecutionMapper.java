@@ -192,4 +192,18 @@ public interface AudioProcessingExecutionMapper
             """)
     int resetForManualRetry(@Param("id") Long id,
                             @Param("now") LocalDateTime now);
+
+    @Update("""
+            UPDATE audio_processing_execution
+            SET execution_status = 'CANCELLED',
+                current_stage = 'CANCELLED',
+                failure_code = NULL,
+                failure_message = NULL,
+                finished_at = #{now}, updated_at = #{now}
+            WHERE id = #{id}
+              AND result_file_id IS NULL
+              AND execution_status IN ('PENDING', 'QUEUED', 'PROCESSING')
+            """)
+    int cancel(@Param("id") Long id,
+               @Param("now") LocalDateTime now);
 }

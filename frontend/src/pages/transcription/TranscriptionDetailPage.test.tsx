@@ -1,5 +1,5 @@
 import { App as AntdApp } from 'antd'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +8,7 @@ import { useAudioPlayback } from '../../hooks/useAudioPlayback'
 import { useCreateTranscription } from '../../hooks/useCreateTranscription'
 import { useTranscript } from '../../hooks/useTranscript'
 import { useTranscriptionTaskPolling } from '../../hooks/useTranscriptionTaskPolling'
+import { updateTranscriptSegment } from '../../api/transcriptions'
 import type { Transcript, TranscriptSegment, TranscriptionTask } from '../../types/transcription'
 import TranscriptionDetailPage from './TranscriptionDetailPage'
 
@@ -18,6 +19,10 @@ vi.mock('../../hooks/useTranscript', () => ({ useTranscript: vi.fn() }))
 vi.mock('../../hooks/useAudioPlayback', () => ({ useAudioPlayback: vi.fn() }))
 vi.mock('../../hooks/useCreateTranscription', () => ({ useCreateTranscription: vi.fn() }))
 vi.mock('../../api/audioFiles', () => ({ downloadAudioFile: vi.fn() }))
+vi.mock('../../api/transcriptions', () => ({
+  updateTranscriptSegment: vi.fn(),
+  downloadTranscript: vi.fn(),
+}))
 vi.mock('../../components/audio/ReportAudioPlayer', () => ({
   default: () => <div aria-label="源音频播放器">播放器</div>,
 }))
@@ -42,6 +47,7 @@ const seekTo = vi.fn()
 const resumeWith = vi.fn()
 const taskRefresh = vi.fn()
 const transcriptRefresh = vi.fn()
+const updateSegmentMock = vi.mocked(updateTranscriptSegment)
 
 const successfulTask: TranscriptionTask = {
   taskId: '9007199254740995',
@@ -142,6 +148,8 @@ describe('TranscriptionDetailPage', () => {
     transcriptRefresh.mockReset()
     createMock.mockReset()
     clearCreateErrorMock.mockReset()
+    updateSegmentMock.mockReset()
+    updateSegmentMock.mockResolvedValue(segments[0])
     pollingMock.mockReturnValue({
       task: successfulTask,
       loading: false,
@@ -339,6 +347,25 @@ describe('TranscriptionDetailPage', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(transcript.fullText))
   })
+
+  it('edits a transcript segment and refreshes the complete transcript', async () => {
+    renderPage()
+
+    await userEvent.click(screen.getByRole('tab', { name: '时间片段' }))
+    await userEvent.click(screen.getByRole('button', { name: /编辑片段/ }))
+    const text = screen.getByLabelText('片段文字')
+    const speaker = screen.getByLabelText('说话人（可选）')
+    fireEvent.change(text, { target: { value: '修正后的第一段' } })
+    fireEvent.change(speaker, { target: { value: '主持人' } })
+    await userEvent.click(screen.getByRole('button', { name: '保存修改' }))
+
+    await waitFor(() => expect(updateSegmentMock).toHaveBeenCalledWith(
+      transcript.transcriptId,
+      segments[0].segmentId,
+      { text: '修正后的第一段', speaker: '主持人' },
+    ))
+    expect(transcriptRefresh).toHaveBeenCalledOnce()
+  }, 10_000)
 
   it('refreshes both task state and transcript result after success', async () => {
     renderPage()

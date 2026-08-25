@@ -58,6 +58,14 @@ public class AudioProcessingExecutionController {
                 executionId));
     }
 
+    @PostMapping("/api/audio-processing/executions/{executionId}/cancel")
+    public ApiResponse<ProcessingExecutionVO> cancel(
+            @PathVariable("executionId") Long executionId) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(executionService.cancel(userId,
+                executionId));
+    }
+
     @GetMapping("/api/audio-analysis/tasks/{taskId}/processing-execution")
     public ApiResponse<ProcessingExecutionVO> getByTask(
             @PathVariable("taskId") Long taskId) {

@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -43,4 +44,33 @@ public interface AudioTranscriptSegmentMapper extends BaseMapper<AudioTranscript
     List<AudioTranscriptSegment> selectOwnedAll(
             @Param("userId") Long userId,
             @Param("transcriptId") Long transcriptId);
+
+    @Select("""
+            SELECT id, user_id, transcript_id, segment_order,
+                   start_ms, end_ms, speaker_label, text, confidence,
+                   created_at
+            FROM audio_transcript_segment
+            WHERE id = #{segmentId}
+              AND transcript_id = #{transcriptId}
+              AND user_id = #{userId}
+            LIMIT 1
+            """)
+    AudioTranscriptSegment selectOwnedSegment(
+            @Param("userId") Long userId,
+            @Param("transcriptId") Long transcriptId,
+            @Param("segmentId") Long segmentId);
+
+    @Update("""
+            UPDATE audio_transcript_segment
+            SET text = #{text}, speaker_label = #{speaker}
+            WHERE id = #{segmentId}
+              AND transcript_id = #{transcriptId}
+              AND user_id = #{userId}
+            """)
+    int updateOwnedContent(
+            @Param("userId") Long userId,
+            @Param("transcriptId") Long transcriptId,
+            @Param("segmentId") Long segmentId,
+            @Param("text") String text,
+            @Param("speaker") String speaker);
 }

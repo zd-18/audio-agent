@@ -2,16 +2,19 @@ import {
   ArrowLeftOutlined,
   CloudUploadOutlined,
   DownloadOutlined,
+  DeleteOutlined,
+  EditOutlined,
   FileTextOutlined,
+  InboxOutlined,
   MessageOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
   ToolOutlined,
 } from '@ant-design/icons'
-import { Alert, Button, Descriptions, Skeleton, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Descriptions, Input, Modal, Skeleton, Space, Typography } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { downloadAudioFile } from '../../api/audioFiles'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { archiveAudioFile, downloadAudioFile, moveAudioFileToRecycleBin, renameAudioFile, restoreArchivedAudioFile } from '../../api/audioFiles'
 import { isValidResourceId } from '../../api/http'
 import CreateAnalysisTaskButton from '../../components/analysis/CreateAnalysisTaskButton'
 import ReportAudioPlayer from '../../components/audio/ReportAudioPlayer'
@@ -40,6 +43,8 @@ function compactResourceId(value: string) {
 }
 
 export default function AudioFileDetailPage() {
+  const { message, modal } = AntdApp.useApp()
+  const navigate = useNavigate()
   const { audioFileId } = useParams()
   const validId = isValidResourceId(audioFileId) ? audioFileId : undefined
   const { data, loading, error, refresh } = useAudioFileDetail(validId)
@@ -49,6 +54,9 @@ export default function AudioFileDetailPage() {
   const latestTranscription = transcriptionTasks.records[0]
   const hasTranscript = latestTranscription?.status === 'SUCCESS'
   const [downloading, setDownloading] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [mutating, setMutating] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const downloadControllerRef = useRef<AbortController | null>(null)
   const downloadInFlightRef = useRef(false)
@@ -82,6 +90,78 @@ export default function AudioFileDetailPage() {
     }
   }
 
+  const openRename = () => {
+    if (!data) return
+    setRenameValue(data.originalName || '')
+    setRenameOpen(true)
+  }
+
+  const saveRename = async () => {
+    if (!data || mutating || !renameValue.trim()) return
+    setMutating(true)
+    try {
+      await renameAudioFile(data.fileId, renameValue.trim())
+      setRenameOpen(false)
+      refresh()
+      void message.success('文件名已更新')
+    } catch (requestError) {
+      void message.error(requestError instanceof Error ? requestError.message : '文件重命名失败')
+    } finally {
+      setMutating(false)
+    }
+  }
+
+  const toggleArchive = () => {
+    if (!data || mutating) return
+    const archived = data.fileStatus === 'ARCHIVED'
+    modal.confirm({
+      title: archived ? '恢复归档文件？' : '归档这个文件？',
+      content: archived
+        ? '恢复后可以继续播放、分析和处理。'
+        : '归档后文件仍会保留，但暂停播放、分析和处理能力。',
+      okText: archived ? '恢复文件' : '确认归档',
+      cancelText: '取消',
+      onOk: async () => {
+        setMutating(true)
+        try {
+          if (archived) await restoreArchivedAudioFile(data.fileId)
+          else await archiveAudioFile(data.fileId)
+          refresh()
+          void message.success(archived ? '文件已恢复' : '文件已归档')
+        } catch (requestError) {
+          void message.error(requestError instanceof Error ? requestError.message : '文件状态更新失败')
+          throw requestError
+        } finally {
+          setMutating(false)
+        }
+      },
+    })
+  }
+
+  const moveToTrash = () => {
+    if (!data || mutating) return
+    modal.confirm({
+      title: '移入回收站？',
+      content: '文件会暂停播放、分析和处理，之后可从音频文件页的回收站恢复。',
+      okText: '移入回收站',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setMutating(true)
+        try {
+          await moveAudioFileToRecycleBin(data.fileId)
+          void message.success('文件已移入回收站')
+          navigate('/audio/files?scope=trash', { replace: true })
+        } catch (requestError) {
+          void message.error(requestError instanceof Error ? requestError.message : '文件删除失败')
+          throw requestError
+        } finally {
+          setMutating(false)
+        }
+      },
+    })
+  }
+
   if (!validId) {
     return (
       <PageContainer>
@@ -99,7 +179,7 @@ export default function AudioFileDetailPage() {
         <PageTitle
           eyebrow="AUDIO FILE DETAIL"
           title="音频文件详情"
-          actions={<Link to="/audio/files"><Button icon={<ArrowLeftOutlined />}>返回文件列表</Button></Link>}
+          actions={<Space wrap><Button icon={<EditOutlined />} disabled={!data || data.fileStatus === 'PROCESSING'} onClick={openRename}>重命名</Button><Button icon={<InboxOutlined />} loading={mutating} disabled={!data || ['PROCESSING', 'UPLOADING'].includes(data.fileStatus || '')} onClick={toggleArchive}>{data?.fileStatus === 'ARCHIVED' ? '恢复归档' : '归档'}</Button><Button danger icon={<DeleteOutlined />} disabled={!data || ['PROCESSING', 'UPLOADING'].includes(data.fileStatus || '') || mutating} onClick={moveToTrash}>移入回收站</Button><Link to="/audio/files"><Button icon={<ArrowLeftOutlined />}>返回文件列表</Button></Link></Space>}
         />
 
         {loading && !data && <section className="workbench-panel"><Skeleton active paragraph={{ rows: 8 }} /></section>}
@@ -233,6 +313,21 @@ export default function AudioFileDetailPage() {
         {!data && !loading && !error && (
           <Button icon={<ReloadOutlined />} onClick={refresh}>重新查询</Button>
         )}
+
+        <Modal
+          title="重命名文件"
+          open={renameOpen}
+          okText="保存"
+          cancelText="取消"
+          confirmLoading={mutating}
+          okButtonProps={{ disabled: !renameValue.trim() }}
+          onOk={() => { void saveRename() }}
+          onCancel={() => { if (!mutating) setRenameOpen(false) }}
+          destroyOnHidden
+        >
+          <Input value={renameValue} maxLength={255} showCount autoFocus onPressEnter={() => { void saveRename() }} onChange={(event) => setRenameValue(event.target.value)} />
+          <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>保留原文件扩展名，只修改便于识别的文件名称。</Typography.Paragraph>
+        </Modal>
       </div>
     </PageContainer>
   )

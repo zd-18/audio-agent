@@ -42,7 +42,8 @@ class FfmpegSilenceDetectorTest {
         processStarter = mock(ExternalProcessStarter.class);
         detector = new FfmpegSilenceDetector(properties,
                 new SilenceDetectOutputParser(),
-                new ExternalProcessExecutor(processStarter));
+                new ExternalProcessExecutor(processStarter,
+                        new com.audioagent.analysis.process.ExternalProcessContextRegistry()));
         audioFile = Files.createFile(tempDir.resolve("audio input.wav"));
     }
 

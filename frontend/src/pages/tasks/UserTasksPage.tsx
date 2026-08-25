@@ -3,6 +3,7 @@ import {
   ClockCircleOutlined,
   CloudUploadOutlined,
   ExclamationCircleFilled,
+  FilterOutlined,
   LoadingOutlined,
   ReloadOutlined,
   RightOutlined,
@@ -10,7 +11,7 @@ import {
 } from '@ant-design/icons'
 import { Alert, Button, Progress, Skeleton, Tag } from 'antd'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { retryAnalysisTask } from '../../api/analysisTasks'
 import EmptyState from '../../components/workbench/EmptyState'
 import PageContainer from '../../components/workbench/PageContainer'
@@ -178,10 +179,14 @@ function HistoryCard({ task }: { task: UserTaskProgress }) {
 }
 
 export default function UserTasksPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const exceptionsOnly = searchParams.get('view') === 'exceptions'
   const { data, loading, refreshing, error, refresh } = useUserTasks()
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const currentTasks = data.records.filter((task) => task.status !== 'COMPLETED')
+  const currentTasks = data.records.filter((task) => exceptionsOnly
+    ? task.status === 'FAILED'
+    : task.status !== 'COMPLETED')
   const historyTasks = data.records.filter((task) => task.status === 'COMPLETED')
 
   const retryAnalysis = async (taskId: string) => {
@@ -242,6 +247,15 @@ export default function UserTasksPage() {
               <div><span>IN PROGRESS</span><h2 id="current-tasks-title">当前任务</h2></div>
               <div className="user-task-section__meta">
                 <small>{currentTasks.length} 个需要关注</small>
+                <Button
+                  type={exceptionsOnly ? 'primary' : 'default'}
+                  icon={<FilterOutlined />}
+                  onClick={() => setSearchParams(exceptionsOnly
+                    ? new URLSearchParams()
+                    : new URLSearchParams({ view: 'exceptions' }))}
+                >
+                  {exceptionsOnly ? '查看全部任务' : '仅看异常任务'}
+                </Button>
                 <Button icon={<ReloadOutlined />} loading={refreshing} onClick={refresh}>
                   刷新进度
                 </Button>
@@ -259,11 +273,11 @@ export default function UserTasksPage() {
                 ))}
               </div>
             ) : (
-              <div className="user-task-inline-empty"><CheckCircleFilled /><span>当前没有待处理任务</span></div>
+              <div className="user-task-inline-empty"><CheckCircleFilled /><span>{exceptionsOnly ? '当前没有异常任务' : '当前没有待处理任务'}</span></div>
             )}
           </section>
 
-          <section className="user-task-section" aria-labelledby="history-tasks-title">
+          {!exceptionsOnly && <section className="user-task-section" aria-labelledby="history-tasks-title">
             <div className="user-task-section__heading">
               <div><span>PROCESSING RECORDS</span><h2 id="history-tasks-title">处理记录</h2></div>
               <small>最近 {historyTasks.length} 条完成记录</small>
@@ -275,7 +289,7 @@ export default function UserTasksPage() {
             ) : (
               <div className="user-task-inline-empty"><ClockCircleOutlined /><span>完成后的任务会记录在这里</span></div>
             )}
-          </section>
+          </section>}
         </>
       )}
     </PageContainer>

@@ -105,4 +105,15 @@ public interface AudioProcessingExecutionStepMapper
             """)
     int resetForRetry(@Param("executionId") Long executionId,
                       @Param("now") LocalDateTime now);
+
+    @Update("""
+            UPDATE audio_processing_execution_step
+            SET execution_status = 'SKIPPED',
+                skip_reason = '用户在处理开始前取消任务',
+                finished_at = #{now}, updated_at = #{now}
+            WHERE execution_id = #{executionId}
+              AND execution_status IN ('PENDING', 'PROCESSING')
+            """)
+    int cancelUnfinished(@Param("executionId") Long executionId,
+                         @Param("now") LocalDateTime now);
 }

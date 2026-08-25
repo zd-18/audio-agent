@@ -52,7 +52,8 @@ class AudioProcessingPipelineIntegrationTest {
         processing.setExecutionTimeoutSeconds(60);
         ObjectMapper mapper = new ObjectMapper();
         ExternalProcessExecutor processes = new ExternalProcessExecutor(
-                new ProcessBuilderExternalProcessStarter());
+                new ProcessBuilderExternalProcessStarter(),
+                new com.audioagent.analysis.process.ExternalProcessContextRegistry());
         FfmpegCommandExecutor commands = new FfmpegCommandExecutor(
                 analysis, processing, processes);
         metadataProbe = new FfprobeAudioMetadataProbe(analysis, mapper);

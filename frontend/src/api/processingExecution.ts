@@ -150,3 +150,12 @@ export async function retryProcessingExecution(executionId: string, signal?: Abo
   )
   return normalizeExecution(payload)
 }
+
+export async function cancelProcessingExecution(executionId: string, signal?: AbortSignal) {
+  requireResourceId(executionId, '执行任务 ID')
+  const payload = await apiRequest<ProcessingExecutionPayload>(
+    `/api/audio-processing/executions/${encodeURIComponent(executionId)}/cancel`,
+    { method: 'POST', headers: headers(), signal },
+  )
+  return normalizeExecution(payload)
+}

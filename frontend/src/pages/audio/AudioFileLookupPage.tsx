@@ -1,9 +1,9 @@
-import { CloudUploadOutlined, DownloadOutlined, DownOutlined, ReloadOutlined, SearchOutlined, ToolOutlined, UndoOutlined } from '@ant-design/icons'
-import { Alert, Button, Dropdown, Input, Select, Table, Tooltip } from 'antd'
+import { CloudUploadOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, InboxOutlined, ReloadOutlined, RollbackOutlined, SearchOutlined, ToolOutlined, UndoOutlined } from '@ant-design/icons'
+import { Alert, App as AntdApp, Button, Dropdown, Input, Select, Space, Table, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { downloadAudioFile } from '../../api/audioFiles'
+import { downloadAudioFile, moveAudioFileToRecycleBin, purgeAudioFile, restoreAudioFileFromRecycleBin } from '../../api/audioFiles'
 import CreateAnalysisTaskButton from '../../components/analysis/CreateAnalysisTaskButton'
 import CreateTranscriptionButton from '../../components/transcription/CreateTranscriptionButton'
 import TranscriptionStatusBadge from '../../components/transcription/TranscriptionStatusBadge'
@@ -23,6 +23,7 @@ const FILE_STATUSES = [
   { value: 'PROCESSING', label: '处理中' },
   { value: 'FAILED', label: '失败' },
   { value: 'DELETED', label: '已删除' },
+  { value: 'ARCHIVED', label: '已归档' },
 ]
 
 const PAGE_SIZES = [10, 20, 50]
@@ -62,6 +63,7 @@ function audioFileFormat(record: AudioFileListItem) {
 }
 
 export default function AudioFileLookupPage() {
+  const { message, modal } = AntdApp.useApp()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { settings } = useUserSettings()
@@ -72,15 +74,18 @@ export default function AudioFileLookupPage() {
   const keyword = searchParams.get('keyword')?.trim() || undefined
   const requestedStatus = searchParams.get('status') || undefined
   const status = FILE_STATUSES.some((item) => item.value === requestedStatus) ? requestedStatus : undefined
+  const scope: 'active' | 'trash' = searchParams.get('scope') === 'trash' ? 'trash' : 'active'
   const [keywordDraft, setKeywordDraft] = useState(keyword || '')
   const [statusDraft, setStatusDraft] = useState<string | undefined>(status)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [mutatingId, setMutatingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [fixedActions, setFixedActions] = useState(true)
   const panelRef = useRef<HTMLElement | null>(null)
   const downloadControllerRef = useRef<AbortController | null>(null)
   const downloadInFlightRef = useRef(false)
-  const query = useMemo(() => ({ current, size, keyword, status }), [current, size, keyword, status])
+  const query = useMemo(() => ({ current, size, keyword, status: scope === 'active' ? status : undefined, scope }), [current, scope, size, keyword, status])
   const { data, loading, error, refresh } = useAudioFileList(query)
 
   useEffect(() => {
@@ -102,20 +107,89 @@ export default function AudioFileLookupPage() {
     return () => observer.disconnect()
   }, [])
 
-  const replaceQuery = (next: { current: number; size: number; keyword?: string; status?: string }) => {
+  const replaceQuery = (next: { current: number; size: number; keyword?: string; status?: string; scope?: 'active' | 'trash' }) => {
     const params = new URLSearchParams()
     if (next.current !== 1) params.set('current', String(next.current))
     if (next.size !== defaultPageSize) params.set('size', String(next.size))
     if (next.keyword) params.set('keyword', next.keyword)
     if (next.status) params.set('status', next.status)
+    if ((next.scope ?? scope) === 'trash') params.set('scope', 'trash')
     setSearchParams(params)
   }
 
-  const submitFilters = () => replaceQuery({ current: 1, size, keyword: keywordDraft.trim() || undefined, status: statusDraft })
+  const submitFilters = () => replaceQuery({ current: 1, size, keyword: keywordDraft.trim() || undefined, status: scope === 'active' ? statusDraft : undefined, scope })
   const resetFilters = () => {
     setKeywordDraft('')
     setStatusDraft(undefined)
-    setSearchParams(new URLSearchParams())
+    setSearchParams(scope === 'trash' ? new URLSearchParams({ scope: 'trash' }) : new URLSearchParams())
+  }
+
+  const switchScope = (nextScope: 'active' | 'trash') => {
+    setKeywordDraft('')
+    setStatusDraft(undefined)
+    setSearchParams(nextScope === 'trash' ? new URLSearchParams({ scope: 'trash' }) : new URLSearchParams())
+  }
+
+  const moveToTrash = (record: AudioFileListItem) => {
+    modal.confirm({
+      title: '移入回收站？',
+      content: `${record.originalFileName || '该文件'}将暂停播放、分析和处理，之后仍可从回收站恢复。`,
+      okText: '移入回收站',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setMutatingId(record.audioFileId)
+        setActionError(null)
+        try {
+          await moveAudioFileToRecycleBin(record.audioFileId)
+          refresh()
+          void message.success('文件已移入回收站')
+        } catch (requestError) {
+          setActionError(requestError instanceof Error ? requestError.message : '文件删除失败')
+          throw requestError
+        } finally {
+          setMutatingId(null)
+        }
+      },
+    })
+  }
+
+  const restoreFromTrash = async (record: AudioFileListItem) => {
+    setMutatingId(record.audioFileId)
+    setActionError(null)
+    try {
+      await restoreAudioFileFromRecycleBin(record.audioFileId)
+      refresh()
+      void message.success('文件已恢复')
+    } catch (requestError) {
+      setActionError(requestError instanceof Error ? requestError.message : '文件恢复失败')
+    } finally {
+      setMutatingId(null)
+    }
+  }
+
+  const purgeFromTrash = (record: AudioFileListItem) => {
+    modal.confirm({
+      title: '永久清理文件对象？',
+      content: 'MinIO 中的文件对象将被删除，历史任务元数据会保留，但此操作无法恢复。',
+      okText: '永久清理',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setMutatingId(record.audioFileId)
+        setActionError(null)
+        try {
+          await purgeAudioFile(record.audioFileId)
+          refresh()
+          void message.success('文件对象已永久清理')
+        } catch (requestError) {
+          setActionError(requestError instanceof Error ? requestError.message : '永久清理失败')
+          throw requestError
+        } finally {
+          setMutatingId(null)
+        }
+      },
+    })
   }
 
   const download = async (record: AudioFileListItem) => {
@@ -160,8 +234,8 @@ export default function AudioFileLookupPage() {
     { title: '文件状态', dataIndex: 'status', width: 110, render: (value?: string) => <AudioFileStatusBadge status={value} /> },
     { title: '转写状态', dataIndex: 'transcriptionStatus', width: 130, render: (value?: string | null) => <TranscriptionStatusBadge status={value} /> },
     {
-      title: '上传时间',
-      dataIndex: 'createdAt',
+      title: scope === 'trash' ? '删除时间' : '上传时间',
+      dataIndex: scope === 'trash' ? 'deletedAt' : 'createdAt',
       width: 180,
       render: (value?: string | null) => (
         <span className="audio-file-list__time">{formatDateTime(value ?? undefined)}</span>
@@ -174,7 +248,12 @@ export default function AudioFileLookupPage() {
       width: 120,
       render: (_, record) => (
         <div className="audio-file-list__actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-          <Dropdown
+          {scope === 'trash' ? (
+            <Space size={4}>
+              <Button type="link" size="small" icon={<RollbackOutlined />} loading={mutatingId === record.audioFileId} disabled={mutatingId !== null && mutatingId !== record.audioFileId} onClick={() => { void restoreFromTrash(record) }}>恢复</Button>
+              <Button type="link" danger size="small" icon={<DeleteOutlined />} disabled={mutatingId !== null} onClick={() => purgeFromTrash(record)}>清理</Button>
+            </Space>
+          ) : <Dropdown
             trigger={['click']}
             menu={{
               items: [
@@ -213,11 +292,20 @@ export default function AudioFileLookupPage() {
                   disabled: downloadingId !== null && downloadingId !== record.audioFileId,
                   onClick: () => download(record),
                 },
+                { type: 'divider' },
+                {
+                  key: 'delete',
+                  danger: true,
+                  icon: <DeleteOutlined />,
+                  label: '移入回收站',
+                  disabled: ['PROCESSING', 'UPLOADING'].includes(record.status || '') || mutatingId !== null,
+                  onClick: () => moveToTrash(record),
+                },
               ],
             }}
           >
             <Button type="text" icon={<DownOutlined />} aria-label={`${record.originalFileName || '未命名音频'}更多操作`}>更多</Button>
-          </Dropdown>
+          </Dropdown>}
         </div>
       ),
     },
@@ -225,7 +313,7 @@ export default function AudioFileLookupPage() {
 
   return (
     <PageContainer>
-      <PageTitle eyebrow="AUDIO LIBRARY" title="音频文件" actions={<Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>上传音频</Button></Link>} />
+      <PageTitle eyebrow="AUDIO LIBRARY" title={scope === 'trash' ? '音频回收站' : '音频文件'} actions={<Space wrap><Button icon={scope === 'trash' ? <RollbackOutlined /> : <InboxOutlined />} onClick={() => switchScope(scope === 'trash' ? 'active' : 'trash')}>{scope === 'trash' ? '返回文件列表' : '回收站'}</Button>{scope === 'active' && <Link to="/audio/upload"><Button type="primary" icon={<CloudUploadOutlined />}>上传音频</Button></Link>}</Space>} />
 
       <section className="workbench-panel audio-file-filter" aria-labelledby="audio-file-filter-title">
         <div className="workbench-panel__heading"><div><span>FILTERS</span><h3 id="audio-file-filter-title">筛选文件</h3></div><Button type="text" icon={<ReloadOutlined />} loading={loading} onClick={refresh}>刷新</Button></div>
@@ -237,13 +325,13 @@ export default function AudioFileLookupPage() {
           <WorkbenchFilterField label="文件名关键词">
             <Input value={keywordDraft} onChange={(event) => setKeywordDraft(event.target.value)} placeholder="输入文件名称" allowClear />
           </WorkbenchFilterField>
-          <WorkbenchFilterField label="文件状态">
+          {scope === 'active' && <WorkbenchFilterField label="文件状态">
             <Select value={statusDraft} onChange={setStatusDraft} placeholder="全部状态" allowClear options={FILE_STATUSES} />
-          </WorkbenchFilterField>
+          </WorkbenchFilterField>}
         </WorkbenchFilterBar>
       </section>
 
-      {(error || downloadError) && <Alert className="resource-detail-alert" type="error" showIcon message={error ? '文件列表查询失败' : '文件下载失败'} description={error || downloadError} action={error ? <Button onClick={refresh}>重试</Button> : undefined} closable={Boolean(downloadError)} onClose={() => setDownloadError(null)} />}
+      {(error || downloadError || actionError) && <Alert className="resource-detail-alert" type="error" showIcon message={error ? '文件列表查询失败' : actionError ? '文件操作失败' : '文件下载失败'} description={error || actionError || downloadError} action={error ? <Button onClick={refresh}>重试</Button> : undefined} closable={Boolean(downloadError || actionError)} onClose={() => { setDownloadError(null); setActionError(null) }} />}
 
       <section ref={panelRef} className="workbench-panel audio-file-list-panel">
         <div className="workbench-panel__heading"><div><span>REAL DATA</span><h3>文件列表</h3></div><small>共 {data.total.toLocaleString('zh-CN')} 条 · 第 {data.pages === 0 ? 0 : data.current} / {data.pages} 页</small></div>
@@ -254,8 +342,8 @@ export default function AudioFileLookupPage() {
           loading={loading}
           scroll={{ x: TABLE_MIN_WIDTH }}
           tableLayout="fixed"
-          locale={{ emptyText: <EmptyState title="暂无音频文件" description="当前筛选条件下没有记录，可以调整条件或上传新音频。" action={<Link to="/audio/upload"><Button type="primary">上传音频</Button></Link>} /> }}
-          onRow={(record) => ({
+          locale={{ emptyText: <EmptyState title={scope === 'trash' ? '回收站为空' : '暂无音频文件'} description={scope === 'trash' ? '移入回收站的文件会显示在这里。' : '当前筛选条件下没有记录，可以调整条件或上传新音频。'} action={scope === 'active' ? <Link to="/audio/upload"><Button type="primary">上传音频</Button></Link> : undefined} /> }}
+          onRow={(record) => scope === 'trash' ? ({}) : ({
             className: 'audio-file-list__row',
             tabIndex: 0,
             'aria-label': `查看音频详情：${record.originalFileName || '未命名音频'}`,
@@ -273,7 +361,7 @@ export default function AudioFileLookupPage() {
             showSizeChanger: true,
             pageSizeOptions: PAGE_SIZES.map(String),
             showTotal: (total, range) => `${range[0]}-${range[1]} / ${total} 条`,
-            onChange: (nextPage, nextSize) => replaceQuery({ current: nextSize !== size ? 1 : nextPage, size: nextSize, keyword, status }),
+            onChange: (nextPage, nextSize) => replaceQuery({ current: nextSize !== size ? 1 : nextPage, size: nextSize, keyword, status: scope === 'active' ? status : undefined, scope }),
           }}
         />
       </section>

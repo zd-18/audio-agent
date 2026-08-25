@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { App } from 'antd'
 import {
+  cancelProcessingExecution,
   getProcessingExecution,
   getProcessingExecutionByTaskId,
   retryProcessingExecution,
@@ -43,11 +44,13 @@ export function useProcessingExecution({
   const [loading, setLoading] = useState(Boolean(resourceKey))
   const [refreshing, setRefreshing] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [version, setVersion] = useState(0)
   const retryLockedRef = useRef(false)
   const retryControllerRef = useRef<AbortController | null>(null)
+  const cancelLockedRef = useRef(false)
   const notifiedTerminalRef = useRef<Set<string>>(new Set())
   const notifyOnTaskCompleteRef = useRef(false)
   notifyOnTaskCompleteRef.current = Boolean(settings?.notifyOnTaskComplete)
@@ -197,14 +200,35 @@ export function useProcessingExecution({
     }
   }, [execution])
 
+  const cancel = useCallback(async () => {
+    if (!execution || cancelLockedRef.current) return null
+    cancelLockedRef.current = true
+    setCancelling(true)
+    setError(null)
+    try {
+      const nextExecution = await cancelProcessingExecution(execution.executionId)
+      setExecution(nextExecution)
+      setVersion((value) => value + 1)
+      return nextExecution
+    } catch (requestError) {
+      if (!isAbortError(requestError)) setError(getProcessingExecutionErrorMessage(requestError))
+      throw requestError
+    } finally {
+      cancelLockedRef.current = false
+      setCancelling(false)
+    }
+  }, [execution])
+
   return {
     execution,
     loading,
     refreshing,
     retrying,
+    cancelling,
     error,
     notFound,
     refresh,
     retry,
+    cancel,
   }
 }

@@ -17,7 +17,6 @@ import com.audioagent.transcription.mapper.AudioTranscriptionTaskMapper;
 import com.audioagent.transcription.model.TranscriptionTaskStatus;
 import com.audioagent.transcription.vo.TranscriptionTaskVO;
 import com.audioagent.transcription.vo.TranscriptVO;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -164,10 +163,8 @@ class AudioTranscriptionServiceImplTest {
         segment.setStartMs(0L);
         segment.setEndMs(1000L);
         segment.setText("真实转写文本");
-        Page<AudioTranscriptSegment> page = new Page<>(1, 100, false);
-        page.setRecords(List.of(segment));
-        when(segmentMapper.selectOwnedPage(any(), eq(7L),
-                eq(transcriptId), eq(null))).thenReturn(page);
+        when(segmentMapper.selectOwnedAll(7L, transcriptId))
+                .thenReturn(List.of(segment));
 
         TranscriptVO result = service.getTranscript(7L, 90L);
 

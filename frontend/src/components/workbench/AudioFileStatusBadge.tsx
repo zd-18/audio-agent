@@ -4,6 +4,7 @@ const labels: Record<string, string> = {
   PROCESSING: '处理中',
   FAILED: '失败',
   DELETED: '已删除',
+  ARCHIVED: '已归档',
 }
 
 const tones: Record<string, string> = {
@@ -12,6 +13,7 @@ const tones: Record<string, string> = {
   PROCESSING: 'processing',
   FAILED: 'failed',
   DELETED: 'pending',
+  ARCHIVED: 'pending',
 }
 
 export default function AudioFileStatusBadge({ status }: { status?: string }) {

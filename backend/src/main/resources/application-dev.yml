@@ -73,17 +73,17 @@ audio:
     completed-retention-hours: ${AUDIO_UPLOAD_COMPLETED_RETENTION_HOURS:168}
     cleanup-interval-ms: ${AUDIO_UPLOAD_CLEANUP_INTERVAL_MS:3600000}
   ffprobe:
-    executable: D:/ffmpeg/bin/ffprobe.exe
+    executable: ${FFPROBE_EXECUTABLE:D:/ffmpeg/bin/ffprobe.exe}
     timeout-seconds: 15
   analysis:
     core-pool-size: 2
     max-pool-size: 4
     queue-capacity: 100
     thread-name-prefix: audio-analysis-
-    ffprobe-path: D:/ffmpeg/bin/ffprobe.exe
+    ffprobe-path: ${FFPROBE_EXECUTABLE:D:/ffmpeg/bin/ffprobe.exe}
     ffmpeg-path: ${FFMPEG_EXECUTABLE:D:/ffmpeg/bin/ffmpeg.exe}
     timeout-seconds: 30
-    dispatch-mode: rabbit
+    dispatch-mode: ${AUDIO_ANALYSIS_DISPATCH_MODE:rabbit}
     processing-lease-seconds: 900
     silence:
       enabled: true

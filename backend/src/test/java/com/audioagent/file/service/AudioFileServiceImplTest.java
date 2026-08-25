@@ -169,6 +169,110 @@ class AudioFileServiceImplTest {
         verifyNoInteractions(minioStorageService);
     }
 
+    @Test
+    void renamesOwnedFileWithoutChangingExtension() {
+        AudioFile file = audioFile(20L, "meeting.wav",
+                FileStatus.AVAILABLE);
+        file.setUserId(7L);
+        file.setExtension("wav");
+        when(audioFileMapper.selectOwnedForUpdate(7L, 20L))
+                .thenReturn(file);
+        when(audioFileMapper.updateById(file)).thenReturn(1);
+
+        var result = service.rename(7L, 20L, "weekly-review.wav");
+
+        assertEquals("weekly-review.wav", result.getOriginalName());
+        assertEquals("weekly-review.wav", file.getOriginalName());
+    }
+
+    @Test
+    void rejectsRenameThatChangesExtension() {
+        AudioFile file = audioFile(20L, "meeting.wav",
+                FileStatus.AVAILABLE);
+        file.setUserId(7L);
+        file.setExtension("wav");
+        when(audioFileMapper.selectOwnedForUpdate(7L, 20L))
+                .thenReturn(file);
+
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.rename(7L, 20L, "meeting.mp3"));
+
+        assertEquals(ErrorCode.PARAM_INVALID.getCode(), error.getCode());
+        verify(audioFileMapper, never()).updateById(any(AudioFile.class));
+    }
+
+    @Test
+    void archivesAndRestoresOwnedFile() {
+        AudioFile file = audioFile(20L, "meeting.wav",
+                FileStatus.AVAILABLE);
+        file.setUserId(7L);
+        when(audioFileMapper.selectOwnedForUpdate(7L, 20L))
+                .thenReturn(file);
+        when(audioFileMapper.updateById(file)).thenReturn(1);
+
+        assertEquals("ARCHIVED",
+                service.archive(7L, 20L).getFileStatus());
+        assertEquals("AVAILABLE",
+                service.restoreArchive(7L, 20L).getFileStatus());
+    }
+
+    @Test
+    void movesAvailableFileToRecycleBin() {
+        AudioFile file = audioFile(20L, "meeting.wav",
+                FileStatus.AVAILABLE);
+        file.setUserId(7L);
+        when(audioFileMapper.selectOwnedForUpdate(7L, 20L))
+                .thenReturn(file);
+        when(audioFileMapper.moveToRecycleBin(eq(7L), eq(20L), any()))
+                .thenReturn(1);
+
+        service.moveToRecycleBin(7L, 20L);
+
+        verify(audioFileMapper).moveToRecycleBin(eq(7L), eq(20L), any());
+        verifyNoInteractions(minioStorageService);
+    }
+
+    @Test
+    void restoresRecycleBinFileOnlyWhenObjectStillExists() {
+        AudioFile file = audioFile(20L, "meeting.wav",
+                FileStatus.DELETED);
+        file.setUserId(7L);
+        file.setDeleted(1);
+        file.setPreDeleteStatus(FileStatus.ARCHIVED);
+        file.setBucketName("audio");
+        file.setObjectKey("original/meeting.wav");
+        when(audioFileMapper.selectOwnedTrashForUpdate(7L, 20L))
+                .thenReturn(file);
+        when(minioStorageService.exists("audio", "original/meeting.wav"))
+                .thenReturn(true);
+        when(audioFileMapper.restoreFromRecycleBin(eq(7L), eq(20L), any()))
+                .thenReturn(1);
+
+        var result = service.restoreFromRecycleBin(7L, 20L);
+
+        assertEquals("ARCHIVED", result.getFileStatus());
+        assertEquals(0, file.getDeleted());
+    }
+
+    @Test
+    void permanentlyPurgesOnlyRecycleBinObjectAndKeepsMetadata() {
+        AudioFile file = audioFile(20L, "meeting.wav",
+                FileStatus.DELETED);
+        file.setUserId(7L);
+        file.setDeleted(1);
+        file.setObjectKey("original/meeting.wav");
+        when(audioFileMapper.selectOwnedTrashForUpdate(7L, 20L))
+                .thenReturn(file);
+        when(audioFileMapper.markPurged(eq(7L), eq(20L), any()))
+                .thenReturn(1);
+
+        service.purge(7L, 20L);
+
+        verify(minioStorageService).delete("original/meeting.wav");
+        verify(audioFileMapper).markPurged(eq(7L), eq(20L), any());
+        verify(audioFileMapper, never()).deleteById(any(AudioFile.class));
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void mockPage(List<AudioFile> records, long total) {
         when(audioFileMapper.selectPage(any(Page.class), any(Wrapper.class)))

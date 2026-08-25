@@ -4,6 +4,7 @@ import com.audioagent.auth.context.CurrentUserProvider;
 import com.audioagent.common.api.ApiResponse;
 import com.audioagent.common.api.PageResult;
 import com.audioagent.transcription.dto.CreateTranscriptionTaskRequest;
+import com.audioagent.transcription.dto.UpdateTranscriptSegmentRequest;
 import com.audioagent.transcription.service.AudioTranscriptionService;
 import com.audioagent.transcription.vo.TranscriptSegmentVO;
 import com.audioagent.transcription.vo.TranscriptVO;
@@ -16,7 +17,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/audio-transcriptions")
@@ -78,5 +85,32 @@ public class AudioTranscriptionController {
         Long userId = currentUserProvider.requireUserId();
         return ApiResponse.success(transcriptionService.listSegments(
                 userId, transcriptId, current, size, keyword));
+    }
+
+    @PatchMapping("/transcripts/{transcriptId}/segments/{segmentId}")
+    public ApiResponse<TranscriptSegmentVO> updateSegment(
+            @PathVariable Long transcriptId,
+            @PathVariable Long segmentId,
+            @Valid @RequestBody UpdateTranscriptSegmentRequest request) {
+        Long userId = currentUserProvider.requireUserId();
+        return ApiResponse.success(transcriptionService.updateSegment(
+                userId, transcriptId, segmentId, request));
+    }
+
+    @GetMapping("/transcripts/{transcriptId}/export")
+    public ResponseEntity<byte[]> exportTranscript(
+            @PathVariable Long transcriptId,
+            @RequestParam(defaultValue = "txt") String format) {
+        Long userId = currentUserProvider.requireUserId();
+        var export = transcriptionService.exportTranscript(
+                userId, transcriptId, format);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(export.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(export.fileName(),
+                                        StandardCharsets.UTF_8)
+                                .build().toString())
+                .body(export.content());
     }
 }

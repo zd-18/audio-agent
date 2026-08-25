@@ -30,6 +30,7 @@ public class ExternalProcessExecutor {
     private static final int COLLECTOR_WAIT_SECONDS = 5;
 
     private final ExternalProcessStarter processStarter;
+    private final ExternalProcessContextRegistry contextRegistry;
 
     public ExternalProcessResult execute(
             List<String> command,
@@ -60,6 +61,7 @@ public class ExternalProcessExecutor {
             ExternalProcessTimeoutException, ExecutionException,
             TimeoutException {
         Process process = processStarter.start(command);
+        contextRegistry.register(process);
         try (ExecutorService streamExecutor =
                      Executors.newVirtualThreadPerTaskExecutor()) {
             Future<?> stdoutFuture = streamExecutor.submit(
@@ -78,6 +80,8 @@ public class ExternalProcessExecutor {
                         "External process timed out");
             }
 
+            contextRegistry.throwIfCurrentCancelled();
+
             CollectedStderr stderr = stderrFuture.get(
                     COLLECTOR_WAIT_SECONDS, TimeUnit.SECONDS);
             stdoutFuture.get(COLLECTOR_WAIT_SECONDS, TimeUnit.SECONDS);
@@ -85,6 +89,7 @@ public class ExternalProcessExecutor {
                     List.of(),
                     stderr.debugOutput());
         } finally {
+            contextRegistry.unregister(process);
             if (process.isAlive()) {
                 destroyProcessTree(process);
             }

@@ -11,6 +11,7 @@ import com.audioagent.transcript.mapper.AudioTranscriptSegmentMapper;
 import com.audioagent.transcription.config.TranscriptionProperties;
 import com.audioagent.transcription.dispatch.TranscriptionTaskDispatcher;
 import com.audioagent.transcription.dto.CreateTranscriptionTaskRequest;
+import com.audioagent.transcription.dto.UpdateTranscriptSegmentRequest;
 import com.audioagent.transcription.entity.AudioTranscript;
 import com.audioagent.transcription.entity.AudioTranscriptionTask;
 import com.audioagent.transcription.mapper.AudioTranscriptMapper;
@@ -27,7 +28,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -153,10 +158,8 @@ public class AudioTranscriptionServiceImpl
         if (transcript == null) {
             throw new BusinessException(ErrorCode.TRANSCRIPT_NOT_FOUND);
         }
-        Page<AudioTranscriptSegment> page = new Page<>(1, 100, false);
-        var segmentPage = segmentMapper.selectOwnedPage(
-                page, userId, transcript.getId(), null);
-        var segments = segmentPage.getRecords().stream()
+        var segments = segmentMapper.selectOwnedAll(
+                        userId, transcript.getId()).stream()
                 .map(TranscriptSegmentVO::from)
                 .toList();
         return TranscriptVO.from(transcript, task.getAudioFileName(),
@@ -186,6 +189,129 @@ public class AudioTranscriptionServiceImpl
                 .toList();
         return PageResult.of(records, result.getCurrent(), result.getSize(),
                 result.getTotal());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public TranscriptSegmentVO updateSegment(
+            Long userId, Long transcriptId, Long segmentId,
+            UpdateTranscriptSegmentRequest request) {
+        requireUserId(userId);
+        requireId(transcriptId, "文字稿ID无效");
+        requireId(segmentId, "文字片段ID无效");
+        AudioTranscript transcript = transcriptMapper.selectOwnedForUpdate(
+                userId, transcriptId);
+        if (transcript == null) {
+            throw new BusinessException(ErrorCode.TRANSCRIPT_NOT_FOUND);
+        }
+        AudioTranscriptSegment segment = segmentMapper.selectOwnedSegment(
+                userId, transcriptId, segmentId);
+        if (segment == null) {
+            throw new BusinessException(ErrorCode.TRANSCRIPT_SEGMENT_NOT_FOUND);
+        }
+        String text = request.getText().trim();
+        String speaker = StringUtils.hasText(request.getSpeaker())
+                ? request.getSpeaker().trim() : null;
+        if (segmentMapper.updateOwnedContent(userId, transcriptId, segmentId,
+                text, speaker) != 1) {
+            throw new BusinessException(ErrorCode.TRANSCRIPT_UPDATE_FAILED);
+        }
+
+        List<AudioTranscriptSegment> all = segmentMapper.selectOwnedAll(
+                userId, transcriptId);
+        transcript.setFullText(all.stream()
+                .map(AudioTranscriptSegment::getText)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.joining("")));
+        Set<String> speakers = all.stream()
+                .map(AudioTranscriptSegment::getSpeakerLabel)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.toSet());
+        transcript.setSpeakerCount(speakers.isEmpty() ? null : speakers.size());
+        transcript.setUpdatedAt(LocalDateTime.now());
+        if (transcriptMapper.updateById(transcript) != 1) {
+            throw new BusinessException(ErrorCode.TRANSCRIPT_UPDATE_FAILED);
+        }
+        segment.setText(text);
+        segment.setSpeakerLabel(speaker);
+        return TranscriptSegmentVO.from(segment);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TranscriptExport exportTranscript(
+            Long userId, Long transcriptId, String format) {
+        requireUserId(userId);
+        requireId(transcriptId, "文字稿ID无效");
+        AudioTranscript transcript = transcriptMapper.selectOwned(
+                userId, transcriptId);
+        if (transcript == null) {
+            throw new BusinessException(ErrorCode.TRANSCRIPT_NOT_FOUND);
+        }
+        String normalized = StringUtils.hasText(format)
+                ? format.trim().toLowerCase(Locale.ROOT) : "txt";
+        if (!Set.of("txt", "srt", "vtt").contains(normalized)) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "导出格式仅支持 TXT、SRT 或 VTT");
+        }
+        List<AudioTranscriptSegment> segments = segmentMapper.selectOwnedAll(
+                userId, transcriptId);
+        String content = switch (normalized) {
+            case "srt" -> toSrt(segments);
+            case "vtt" -> "WEBVTT\n\n" + toVtt(segments);
+            default -> transcript.getFullText();
+        };
+        String contentType = normalized.equals("txt")
+                ? "text/plain;charset=UTF-8"
+                : "text/" + normalized + ";charset=UTF-8";
+        return new TranscriptExport("transcript-" + transcriptId + "."
+                + normalized, contentType,
+                content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String toSrt(List<AudioTranscriptSegment> segments) {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < segments.size(); i++) {
+            AudioTranscriptSegment segment = segments.get(i);
+            result.append(i + 1).append('\n')
+                    .append(timestamp(segment.getStartMs(), ','))
+                    .append(" --> ")
+                    .append(timestamp(segment.getEndMs(), ','))
+                    .append('\n')
+                    .append(captionText(segment)).append("\n\n");
+        }
+        return result.toString();
+    }
+
+    private String toVtt(List<AudioTranscriptSegment> segments) {
+        StringBuilder result = new StringBuilder();
+        for (AudioTranscriptSegment segment : segments) {
+            result.append(timestamp(segment.getStartMs(), '.'))
+                    .append(" --> ")
+                    .append(timestamp(segment.getEndMs(), '.'))
+                    .append('\n')
+                    .append(captionText(segment)).append("\n\n");
+        }
+        return result.toString();
+    }
+
+    private String captionText(AudioTranscriptSegment segment) {
+        return StringUtils.hasText(segment.getSpeakerLabel())
+                ? "[" + segment.getSpeakerLabel().trim() + "] "
+                + segment.getText().trim()
+                : segment.getText().trim();
+    }
+
+    private String timestamp(Long value, char millisecondSeparator) {
+        long total = value == null ? 0 : Math.max(0, value);
+        long hours = total / 3_600_000;
+        long minutes = total % 3_600_000 / 60_000;
+        long seconds = total % 60_000 / 1_000;
+        long millis = total % 1_000;
+        return "%02d:%02d:%02d%c%03d".formatted(
+                hours, minutes, seconds, millisecondSeparator, millis);
     }
 
     private void rejectUnavailableFile(Long userId, Long fileId) {

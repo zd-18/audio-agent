@@ -2,6 +2,7 @@ package com.audioagent.transcription.service;
 
 import com.audioagent.common.api.PageResult;
 import com.audioagent.transcription.dto.CreateTranscriptionTaskRequest;
+import com.audioagent.transcription.dto.UpdateTranscriptSegmentRequest;
 import com.audioagent.transcription.vo.TranscriptSegmentVO;
 import com.audioagent.transcription.vo.TranscriptVO;
 import com.audioagent.transcription.vo.TranscriptionTaskVO;
@@ -23,4 +24,15 @@ public interface AudioTranscriptionService {
     PageResult<TranscriptSegmentVO> listSegments(
             Long userId, Long transcriptId, int current, int size,
             String keyword);
+
+    TranscriptSegmentVO updateSegment(
+            Long userId, Long transcriptId, Long segmentId,
+            UpdateTranscriptSegmentRequest request);
+
+    TranscriptExport exportTranscript(
+            Long userId, Long transcriptId, String format);
+
+    record TranscriptExport(String fileName, String contentType,
+                            byte[] content) {
+    }
 }

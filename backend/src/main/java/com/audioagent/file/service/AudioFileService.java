@@ -43,4 +43,19 @@ public interface AudioFileService {
      * 校验文件归属和可用状态，生成短期播放地址。
      */
     AudioPlaybackUrlVO getPlaybackUrl(Long userId, Long fileId);
+
+    AudioFileVO rename(Long userId, Long fileId, String fileName);
+
+    AudioFileVO archive(Long userId, Long fileId);
+
+    AudioFileVO restoreArchive(Long userId, Long fileId);
+
+    PageResult<AudioFileListVO> listRecycleBin(
+            Long userId, int current, int size, String keyword);
+
+    void moveToRecycleBin(Long userId, Long fileId);
+
+    AudioFileVO restoreFromRecycleBin(Long userId, Long fileId);
+
+    void purge(Long userId, Long fileId);
 }

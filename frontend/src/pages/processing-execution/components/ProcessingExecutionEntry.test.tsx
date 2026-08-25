@@ -43,10 +43,12 @@ describe('ProcessingExecutionEntry', () => {
       loading: false,
       refreshing: false,
       retrying: false,
+      cancelling: false,
       error: null,
       notFound: true,
       refresh: vi.fn(),
       retry: vi.fn(),
+      cancel: vi.fn(),
     })
   })
 

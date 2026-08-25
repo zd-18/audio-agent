@@ -3,6 +3,7 @@ package com.audioagent.processing.pipeline;
 import com.audioagent.analysis.process.ExternalProcessExecutor;
 import com.audioagent.analysis.process.ExternalProcessResult;
 import com.audioagent.analysis.process.ExternalProcessTimeoutException;
+import com.audioagent.analysis.process.ExternalProcessCancelledException;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.infrastructure.ffprobe.AnalysisProperties;
 import com.audioagent.processing.config.AudioProcessingProperties;
@@ -125,6 +126,12 @@ public class FfmpegCommandExecutor {
             return result;
         } catch (ProcessingExecutionException e) {
             throw e;
+        } catch (ExternalProcessCancelledException e) {
+            log.info("FFmpeg processing cancelled, operation={}",
+                    operationLabel);
+            throw new ProcessingExecutionException(
+                    ErrorCode.PROCESSING_EXECUTION_CANCELLED,
+                    false, "Audio processing was cancelled", e);
         } catch (ExternalProcessTimeoutException e) {
             log.error("FFmpeg processing timed out, operation={}, "
                             + "timeoutSeconds={}", operationLabel,

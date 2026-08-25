@@ -52,9 +52,15 @@ public class AudioFile {
 
     private FileStatus fileStatus;
 
+    private FileStatus preDeleteStatus;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    private LocalDateTime deletedAt;
+
+    private LocalDateTime purgedAt;
 
     @TableLogic
     private Integer deleted;

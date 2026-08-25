@@ -1,16 +1,20 @@
 import {
   ArrowLeftOutlined,
   CopyOutlined,
+  DownloadOutlined,
+  EditOutlined,
   FileTextOutlined,
   LoadingOutlined,
   MessageOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import { Alert, App as AntdApp, Button, Progress, Skeleton, Tabs, Tooltip } from 'antd'
+import { Alert, App as AntdApp, Button, Dropdown, Input, Modal, Progress, Select, Skeleton, Space, Tabs, Tooltip } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { downloadAudioFile } from '../../api/audioFiles'
 import { isValidResourceId } from '../../api/http'
+import { downloadTranscript, updateTranscriptSegment } from '../../api/transcriptions'
+import type { TranscriptExportFormat } from '../../api/transcriptions'
 import ReportAudioPlayer from '../../components/audio/ReportAudioPlayer'
 import ContentAnalysisSection from '../../components/content-analysis/ContentAnalysisSection'
 import TranscriptParagraphList from '../../components/transcription/TranscriptParagraphList'
@@ -77,10 +81,16 @@ export default function TranscriptionDetailPage() {
   const [viewMode, setViewMode] = useState<TranscriptViewMode>('compact')
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(() => new Set())
   const [locatedSegmentOrder, setLocatedSegmentOrder] = useState<number | null>(null)
+  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState('')
+  const [editingSpeaker, setEditingSpeaker] = useState('')
+  const [savingSegment, setSavingSegment] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const progress = clampTranscriptionProgress(task?.progressPercent)
   const progressText = getTranscriptionProgressText(progress, task?.status)
   const segments = transcriptState.transcript?.segments ?? []
   const paragraphs = useMemo(() => createTranscriptParagraphs(segments), [segments])
+  const editingSegment = segments.find((segment) => segment.segmentId === editingSegmentId) ?? null
 
   const activeSegmentIndex = useMemo(() => {
     const currentMs = player.currentTimeSeconds * 1000
@@ -167,6 +177,53 @@ export default function TranscriptionDetailPage() {
       void message.success('全文已复制')
     } catch {
       void message.error('复制失败，请手动选择文字')
+    }
+  }
+
+  const exportTranscript = async (format: TranscriptExportFormat) => {
+    const transcript = transcriptState.transcript
+    if (!transcript || exporting) return
+    setExporting(true)
+    try {
+      await downloadTranscript(transcript.transcriptId, format, task?.audioFileName || 'transcript')
+      void message.success(`文字稿已导出为 ${format.toUpperCase()}`)
+    } catch (requestError) {
+      void message.error(requestError instanceof Error ? requestError.message : '文字稿导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const selectEditingSegment = (segmentId: string) => {
+    const segment = segments.find((item) => item.segmentId === segmentId)
+    if (!segment) return
+    setEditingSegmentId(segmentId)
+    setEditingText(segment.text)
+    setEditingSpeaker(segment.speaker || '')
+  }
+
+  const openTranscriptEditor = () => {
+    const first = segments[0]
+    if (!first) return
+    selectEditingSegment(first.segmentId)
+  }
+
+  const saveSegment = async () => {
+    const transcript = transcriptState.transcript
+    if (!transcript || !editingSegment || savingSegment || !editingText.trim()) return
+    setSavingSegment(true)
+    try {
+      await updateTranscriptSegment(transcript.transcriptId, editingSegment.segmentId, {
+        text: editingText.trim(),
+        speaker: editingSpeaker.trim() || null,
+      })
+      setEditingSegmentId(null)
+      transcriptState.refresh()
+      void message.success('文字片段已更新')
+    } catch (requestError) {
+      void message.error(requestError instanceof Error ? requestError.message : '文字片段保存失败')
+    } finally {
+      setSavingSegment(false)
     }
   }
 
@@ -325,7 +382,22 @@ export default function TranscriptionDetailPage() {
                     children: (
                       <div className="transcript-tab-panel transcript-full-text" aria-label="完整文字稿内容">
                         <div className="transcript-tab-heading">
-                          <Button icon={<CopyOutlined />} disabled={!transcriptState.transcript.fullText.trim()} onClick={() => { void copyFullText() }}>复制全文</Button>
+                          <Space wrap>
+                            <Button icon={<CopyOutlined />} disabled={!transcriptState.transcript.fullText.trim()} onClick={() => { void copyFullText() }}>复制全文</Button>
+                            <Dropdown
+                              menu={{
+                                items: [
+                                  { key: 'txt', label: 'TXT 文本' },
+                                  { key: 'srt', label: 'SRT 字幕' },
+                                  { key: 'vtt', label: 'VTT 字幕' },
+                                ],
+                                onClick: ({ key }) => { void exportTranscript(key as TranscriptExportFormat) },
+                              }}
+                              disabled={exporting}
+                            >
+                              <Button icon={<DownloadOutlined />} loading={exporting}>导出</Button>
+                            </Dropdown>
+                          </Space>
                         </div>
                         <div className={`transcript-full-text__content${transcriptState.transcript.fullText.trim() ? '' : ' is-empty'}`}>
                           {transcriptState.transcript.fullText.trim()
@@ -342,7 +414,10 @@ export default function TranscriptionDetailPage() {
                       <div className="transcript-tab-panel transcript-segments" aria-label="时间片段内容">
                         <div className="transcript-tab-heading transcript-segments__heading">
                           <small>{viewMode === 'compact' ? '点击段落时间即可播放' : '点击片段即可从对应位置播放'}</small>
-                          <TranscriptViewSwitcher value={viewMode} onChange={setViewMode} />
+                          <Space wrap>
+                            <Button icon={<EditOutlined />} disabled={segments.length === 0} onClick={openTranscriptEditor}>编辑片段</Button>
+                            <TranscriptViewSwitcher value={viewMode} onChange={setViewMode} />
+                          </Space>
                         </div>
                         {viewMode === 'compact' ? (
                           <TranscriptParagraphList
@@ -379,6 +454,37 @@ export default function TranscriptionDetailPage() {
               />
             </section>
           )}
+
+          <Modal
+            title="编辑文字片段"
+            open={Boolean(editingSegmentId)}
+            okText="保存修改"
+            cancelText="取消"
+            confirmLoading={savingSegment}
+            okButtonProps={{ disabled: !editingText.trim() }}
+            onOk={() => { void saveSegment() }}
+            onCancel={() => { if (!savingSegment) setEditingSegmentId(null) }}
+            destroyOnHidden
+          >
+            <div className="transcript-editor-form">
+              <label htmlFor="transcript-editor-segment">文字片段</label>
+              <Select
+                id="transcript-editor-segment"
+                value={editingSegmentId || undefined}
+                onChange={selectEditingSegment}
+                options={segments.map((segment) => ({
+                  value: segment.segmentId,
+                  label: `#${getTranscriptSegmentOrder(segment)} · ${formatDuration(segment.startMs)} · ${segment.text.slice(0, 36)}`,
+                }))}
+                showSearch
+                optionFilterProp="label"
+              />
+              <label htmlFor="transcript-editor-speaker">说话人（可选）</label>
+              <Input id="transcript-editor-speaker" value={editingSpeaker} maxLength={64} placeholder="例如：主持人、嘉宾 A" onChange={(event) => setEditingSpeaker(event.target.value)} />
+              <label htmlFor="transcript-editor-text">片段文字</label>
+              <Input.TextArea id="transcript-editor-text" value={editingText} maxLength={5000} autoSize={{ minRows: 5, maxRows: 12 }} showCount onChange={(event) => setEditingText(event.target.value)} />
+            </div>
+          </Modal>
         </div>
       )}
     </PageContainer>

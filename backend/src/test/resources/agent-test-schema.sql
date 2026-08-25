@@ -32,6 +32,9 @@ CREATE TABLE audio_file (
     channels INT,
     bit_rate INT,
     file_status INT,
+    pre_delete_status INT,
+    deleted_at TIMESTAMP,
+    purged_at TIMESTAMP,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     deleted TINYINT DEFAULT 0

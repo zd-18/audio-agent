@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getAudioFileList } from '../api/audioFiles'
+import { getAudioFileList, getAudioRecycleBinList } from '../api/audioFiles'
 import type { AudioFileListItem, PageResult } from '../types/api'
 
 export interface AudioFileListQuery {
@@ -7,6 +7,7 @@ export interface AudioFileListQuery {
   size: number
   keyword?: string
   status?: string
+  scope?: 'active' | 'trash'
 }
 
 const EMPTY_PAGE: PageResult<AudioFileListItem> = {
@@ -28,7 +29,10 @@ export function useAudioFileList(query: AudioFileListQuery) {
     const controller = new AbortController()
     setLoading(true)
     setError(null)
-    getAudioFileList(query, controller.signal)
+    const request = query.scope === 'trash'
+      ? getAudioRecycleBinList(query, controller.signal)
+      : getAudioFileList(query, controller.signal)
+    request
       .then(setData)
       .catch((requestError: unknown) => {
         if (requestError instanceof DOMException && requestError.name === 'AbortError') return
@@ -39,7 +43,7 @@ export function useAudioFileList(query: AudioFileListQuery) {
       })
 
     return () => controller.abort()
-  }, [query.current, query.size, query.keyword, query.status, version])
+  }, [query.current, query.scope, query.size, query.keyword, query.status, version])
 
   return { data, loading, error, refresh }
 }

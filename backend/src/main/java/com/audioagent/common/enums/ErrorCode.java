@@ -27,6 +27,8 @@ public enum ErrorCode {
     PROCESSING_EXECUTION_OUTPUT_INVALID(40230, "Processing output is invalid"),
     PROCESSING_EXECUTION_UPLOAD_FAILED(40231, "Processing output upload failed"),
     PROCESSING_EXECUTION_FAILED(40232, "Audio processing execution failed"),
+    PROCESSING_EXECUTION_NOT_CANCELLABLE(40233, "Processing execution cannot be cancelled"),
+    PROCESSING_EXECUTION_CANCELLED(40234, "Processing execution was cancelled"),
     MINIO_DOWNLOAD_FAILED(40406, "MinIO object download failed"),
 
     // 通用
@@ -47,6 +49,8 @@ public enum ErrorCode {
     MULTIPART_CHUNKS_INCOMPLETE(40012, "上传分片尚未完整"),
     MULTIPART_HASH_MISMATCH(40013, "文件 SHA-256 校验失败"),
     MULTIPART_UPLOAD_BUSY(40014, "上传任务正在合并"),
+    AUDIO_FILE_UPDATE_FAILED(40015, "文件信息更新失败，请稍后重试"),
+    AUDIO_FILE_STATUS_INVALID(40016, "文件状态不允许当前操作"),
 
     // 任务相关 40101-40199
     AUDIO_TASK_NOT_FOUND(40101, "任务不存在"),
@@ -97,6 +101,8 @@ public enum ErrorCode {
     ASR_TIMEOUT(40707, "语音识别超时"),
     AUDIO_STANDARDIZATION_FAILED(40708, "音频标准化失败"),
     TRANSCRIPT_PERSISTENCE_FAILED(40709, "文字稿保存失败，请联系管理员"),
+    TRANSCRIPT_SEGMENT_NOT_FOUND(40710, "文字稿片段不存在"),
+    TRANSCRIPT_UPDATE_FAILED(40711, "文字稿更新失败，请稍后重试"),
 
     // 智能内容分析相关 40801-40899
     AI_SERVICE_NOT_CONFIGURED(40801, "智能分析服务尚未配置"),

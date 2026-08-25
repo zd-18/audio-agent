@@ -49,6 +49,7 @@ class AudioProcessingExecutionServiceImplTest {
     private AudioProcessingExecutionStepMapper stepMapper;
     private AudioProcessingExecutionDispatcher dispatcher;
     private ProcessingExecutionWorkDirectory workDirectories;
+    private com.audioagent.analysis.process.ExternalProcessContextRegistry processContexts;
     private ObjectMapper objectMapper;
     private AudioProcessingExecutionServiceImpl service;
 
@@ -62,12 +63,14 @@ class AudioProcessingExecutionServiceImplTest {
         stepMapper = mock(AudioProcessingExecutionStepMapper.class);
         dispatcher = mock(AudioProcessingExecutionDispatcher.class);
         workDirectories = mock(ProcessingExecutionWorkDirectory.class);
+        processContexts = mock(com.audioagent.analysis.process.ExternalProcessContextRegistry.class);
         objectMapper = new ObjectMapper().findAndRegisterModules();
         service = new AudioProcessingExecutionServiceImpl(properties,
                 confirmationMapper, taskMapper, fileMapper,
                 executionMapper, stepMapper,
                 new ProcessingExecutionSnapshotParser(objectMapper),
-                dispatcher, workDirectories, objectMapper);
+                dispatcher, workDirectories,
+                processContexts, objectMapper);
     }
 
     @Test
@@ -254,6 +257,45 @@ class AudioProcessingExecutionServiceImplTest {
                 .thenReturn(execution);
         assertCode(ErrorCode.PROCESSING_EXECUTION_NOT_FOUND,
                 () -> service.get(7L, execution.getId()));
+    }
+
+    @Test
+    void queuedExecutionCanBeCancelledBeforeProcessingStarts() {
+        AudioProcessingExecution execution = execution("QUEUED", 7L);
+        when(executionMapper.selectExecutionById(execution.getId()))
+                .thenReturn(execution);
+        when(executionMapper.cancel(eq(execution.getId()),
+                any())).thenAnswer(invocation -> {
+            execution.setExecutionStatus("CANCELLED");
+            return 1;
+        });
+        when(stepMapper.selectByExecutionId(execution.getId()))
+                .thenReturn(List.of());
+
+        ProcessingExecutionVO result = service.cancel(7L,
+                execution.getId());
+
+        assertEquals("CANCELLED", result.getExecutionStatus());
+        verify(stepMapper).cancelUnfinished(eq(execution.getId()), any());
+    }
+
+    @Test
+    void processingExecutionCanBeCancelledAndStopsExternalProcess() {
+        AudioProcessingExecution execution = execution("PROCESSING", 7L);
+        when(executionMapper.selectExecutionById(execution.getId()))
+                .thenReturn(execution);
+        when(executionMapper.cancel(eq(execution.getId()), any()))
+                .thenAnswer(invocation -> {
+                    execution.setExecutionStatus("CANCELLED");
+                    return 1;
+                });
+        when(stepMapper.selectByExecutionId(execution.getId()))
+                .thenReturn(List.of());
+
+        assertEquals("CANCELLED",
+                service.cancel(7L, execution.getId()).getExecutionStatus());
+        verify(processContexts).cancel("audio-processing:"
+                + execution.getId());
     }
 
     @Test

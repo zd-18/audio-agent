@@ -22,6 +22,7 @@ public class AudioFileListVO {
     private String status;
     private String sha256;
     private LocalDateTime createdAt;
+    private LocalDateTime deletedAt;
     @JsonSerialize(using = ToStringSerializer.class)
     private Long transcriptionTaskId;
     private String transcriptionStatus;
@@ -37,6 +38,7 @@ public class AudioFileListVO {
                         ? null : audioFile.getFileStatus().name())
                 .sha256(audioFile.getSha256())
                 .createdAt(audioFile.getCreatedAt())
+                .deletedAt(audioFile.getDeletedAt())
                 .build();
     }
 

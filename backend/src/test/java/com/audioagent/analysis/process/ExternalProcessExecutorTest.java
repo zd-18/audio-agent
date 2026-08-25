@@ -38,7 +38,8 @@ class ExternalProcessExecutorTest {
         when(handle.descendants()).thenReturn(Stream.empty());
         AtomicInteger consumed = new AtomicInteger();
 
-        ExternalProcessResult result = new ExternalProcessExecutor(starter)
+        ExternalProcessResult result = new ExternalProcessExecutor(starter,
+                new ExternalProcessContextRegistry())
                 .execute(List.of("ffmpeg"), 5,
                         (Consumer<String>) line ->
                                 consumed.incrementAndGet());

@@ -415,6 +415,171 @@ public class AudioFileServiceImpl implements AudioFileService {
                 .build();
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AudioFileVO rename(Long userId, Long fileId, String fileName) {
+        AudioFile audioFile = requireOwnedForUpdate(userId, fileId);
+        if (audioFile.getFileStatus() == FileStatus.PROCESSING) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_NOT_AVAILABLE,
+                    "文件处理中，暂时不能重命名");
+        }
+        String cleaned = cleanFileName(fileName);
+        String extension = extractExtension(cleaned);
+        if (!extension.equalsIgnoreCase(audioFile.getExtension())) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "重命名不能修改文件扩展名");
+        }
+        audioFile.setOriginalName(cleaned);
+        audioFile.setUpdatedAt(LocalDateTime.now());
+        if (audioFileMapper.updateById(audioFile) != 1) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_UPDATE_FAILED);
+        }
+        return AudioFileVO.from(audioFile);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AudioFileVO archive(Long userId, Long fileId) {
+        AudioFile audioFile = requireOwnedForUpdate(userId, fileId);
+        if (audioFile.getFileStatus() == FileStatus.PROCESSING
+                || audioFile.getFileStatus() == FileStatus.UPLOADING) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_NOT_AVAILABLE,
+                    "文件正在处理或上传，暂时不能归档");
+        }
+        if (audioFile.getFileStatus() != FileStatus.ARCHIVED) {
+            audioFile.setFileStatus(FileStatus.ARCHIVED);
+            audioFile.setUpdatedAt(LocalDateTime.now());
+            if (audioFileMapper.updateById(audioFile) != 1) {
+                throw new BusinessException(ErrorCode.AUDIO_FILE_UPDATE_FAILED);
+            }
+        }
+        return AudioFileVO.from(audioFile);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AudioFileVO restoreArchive(Long userId, Long fileId) {
+        AudioFile audioFile = requireOwnedForUpdate(userId, fileId);
+        if (audioFile.getFileStatus() != FileStatus.ARCHIVED) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_STATUS_INVALID,
+                    "只有已归档文件可以恢复");
+        }
+        audioFile.setFileStatus(FileStatus.AVAILABLE);
+        audioFile.setUpdatedAt(LocalDateTime.now());
+        if (audioFileMapper.updateById(audioFile) != 1) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_UPDATE_FAILED);
+        }
+        return AudioFileVO.from(audioFile);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResult<AudioFileListVO> listRecycleBin(
+            Long userId, int current, int size, String keyword) {
+        validateUserId(userId);
+        validatePage(current, size);
+        String normalized = StringUtils.hasText(keyword)
+                ? keyword.trim() : null;
+        Page<AudioFile> page = new Page<>(current, size);
+        var result = audioFileMapper.selectRecycleBinPage(
+                page, userId, normalized);
+        return PageResult.of(result.getRecords().stream()
+                        .map(AudioFileListVO::from).toList(),
+                result.getCurrent(), result.getSize(), result.getTotal());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void moveToRecycleBin(Long userId, Long fileId) {
+        AudioFile audioFile = requireOwnedForUpdate(userId, fileId);
+        if (audioFile.getFileStatus() == FileStatus.PROCESSING
+                || audioFile.getFileStatus() == FileStatus.UPLOADING) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_STATUS_INVALID,
+                    "文件正在处理或上传，暂时不能删除");
+        }
+        if (audioFileMapper.moveToRecycleBin(userId, fileId,
+                LocalDateTime.now()) != 1) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_UPDATE_FAILED,
+                    "文件状态已变化，请刷新后重试");
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AudioFileVO restoreFromRecycleBin(Long userId, Long fileId) {
+        AudioFile audioFile = requireOwnedTrashForUpdate(userId, fileId);
+        boolean exists;
+        try {
+            exists = minioStorageService.exists(audioFile.getBucketName(),
+                    audioFile.getObjectKey());
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.MINIO_OBJECT_CHECK_FAILED,
+                    "暂时无法确认文件对象，请稍后重试");
+        }
+        if (!exists) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_NOT_AVAILABLE,
+                    "文件对象已被清理，无法恢复");
+        }
+        if (audioFileMapper.restoreFromRecycleBin(userId, fileId,
+                LocalDateTime.now()) != 1) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_UPDATE_FAILED,
+                    "文件状态已变化，请刷新后重试");
+        }
+        audioFile.setFileStatus(audioFile.getPreDeleteStatus() == null
+                ? FileStatus.AVAILABLE : audioFile.getPreDeleteStatus());
+        audioFile.setPreDeleteStatus(null);
+        audioFile.setDeleted(0);
+        audioFile.setDeletedAt(null);
+        return AudioFileVO.from(audioFile);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void purge(Long userId, Long fileId) {
+        AudioFile audioFile = requireOwnedTrashForUpdate(userId, fileId);
+        try {
+            minioStorageService.delete(audioFile.getObjectKey());
+        } catch (RuntimeException e) {
+            throw new BusinessException(ErrorCode.MINIO_DELETE_FAILED,
+                    "文件对象清理失败，请稍后重试");
+        }
+        if (audioFileMapper.markPurged(userId, fileId,
+                LocalDateTime.now()) != 1) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_UPDATE_FAILED,
+                    "文件已清理，但元数据状态更新失败，请联系管理员");
+        }
+    }
+
+    private AudioFile requireOwnedTrashForUpdate(Long userId, Long fileId) {
+        validateUserId(userId);
+        if (fileId == null || fileId <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "文件ID不能为空");
+        }
+        AudioFile audioFile = audioFileMapper.selectOwnedTrashForUpdate(
+                userId, fileId);
+        if (audioFile == null) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_NOT_FOUND,
+                    "回收站文件不存在或不可访问");
+        }
+        return audioFile;
+    }
+
+    private AudioFile requireOwnedForUpdate(Long userId, Long fileId) {
+        validateUserId(userId);
+        if (fileId == null || fileId <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "文件ID不能为空");
+        }
+        AudioFile audioFile = audioFileMapper.selectOwnedForUpdate(
+                userId, fileId);
+        if (audioFile == null) {
+            throw new BusinessException(ErrorCode.AUDIO_FILE_NOT_FOUND,
+                    "资源不存在或不可访问");
+        }
+        return audioFile;
+    }
+
     private BusinessException playbackUrlGenerationFailed(
             Long userId,
             Long fileId,

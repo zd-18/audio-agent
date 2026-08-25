@@ -100,7 +100,8 @@ class AudioProcessingExecutionExecutorPersistenceTest {
                 pipeline, metadataProbe, outputValidator, resultCritic,
                 workDirectories,
                 new ProcessingExecutionErrorClassifier(),
-                new ObjectMapper(), transactionTemplate);
+                new ObjectMapper(), transactionTemplate,
+                new com.audioagent.analysis.process.ExternalProcessContextRegistry());
 
         execution = execution();
         source = source();

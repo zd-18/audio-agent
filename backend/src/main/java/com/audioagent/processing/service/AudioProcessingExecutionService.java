@@ -16,4 +16,6 @@ public interface AudioProcessingExecutionService {
     ProcessingExecutionVO getByTask(Long userId, Long taskId);
 
     ProcessingExecutionVO retry(Long userId, Long executionId);
+
+    ProcessingExecutionVO cancel(Long userId, Long executionId);
 }

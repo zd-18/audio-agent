@@ -6,6 +6,7 @@ import com.audioagent.analysis.enums.AnalysisTaskStatus;
 import com.audioagent.analysis.mapper.AudioAnalysisTaskMapper;
 import com.audioagent.analysis.mapper.AudioProcessingConfirmationMapper;
 import com.audioagent.analysis.processing.ProcessingConfirmationStatus;
+import com.audioagent.analysis.process.ExternalProcessContextRegistry;
 import com.audioagent.common.enums.ErrorCode;
 import com.audioagent.common.exception.BusinessException;
 import com.audioagent.common.api.PageResult;
@@ -58,6 +59,7 @@ public class AudioProcessingExecutionServiceImpl
     private final ProcessingExecutionSnapshotParser snapshotParser;
     private final AudioProcessingExecutionDispatcher dispatcher;
     private final ProcessingExecutionWorkDirectory workDirectories;
+    private final ExternalProcessContextRegistry processContexts;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -232,6 +234,53 @@ public class AudioProcessingExecutionServiceImpl
         executionStepMapper.resetForRetry(executionId, now);
         dispatchAfterCommit(executionId);
         return toVO(load(executionId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ProcessingExecutionVO cancel(Long userId, Long executionId) {
+        requirePositive(userId, "userId");
+        requirePositive(executionId, "executionId");
+        AudioProcessingExecution execution = loadOwned(userId, executionId);
+        if (!(ProcessingExecutionStatus.PENDING.name().equals(
+                execution.getExecutionStatus())
+                || ProcessingExecutionStatus.QUEUED.name().equals(
+                execution.getExecutionStatus())
+                || ProcessingExecutionStatus.PROCESSING.name().equals(
+                execution.getExecutionStatus()))) {
+            throw new BusinessException(
+                    ErrorCode.PROCESSING_EXECUTION_NOT_CANCELLABLE,
+                    "当前任务状态不能取消");
+        }
+        boolean processRunning = ProcessingExecutionStatus.PROCESSING.name()
+                .equals(execution.getExecutionStatus());
+        LocalDateTime now = LocalDateTime.now();
+        if (executionMapper.cancel(executionId, now) != 1) {
+            throw new BusinessException(
+                    ErrorCode.PROCESSING_EXECUTION_NOT_CANCELLABLE,
+                    "任务状态已变化，请刷新后重试");
+        }
+        executionStepMapper.cancelUnfinished(executionId, now);
+        if (processRunning) {
+            cancelProcessAfterCommit(executionId);
+        }
+        return toVO(load(executionId));
+    }
+
+    private void cancelProcessAfterCommit(Long executionId) {
+        Runnable cancel = () -> processContexts.cancel(
+                "audio-processing:" + executionId);
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            cancel.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        cancel.run();
+                    }
+                });
     }
 
     private AudioProcessingExecution newExecution(
